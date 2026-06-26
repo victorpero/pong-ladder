@@ -26,11 +26,11 @@ export default function RulesPage() {
           <p>
             If the winner of a match is the higher-ranked player, meaning the player with the most points before the
             match, they receive 5 points minus the number of sets won by the loser. The loser receives 1 point for each
-            set they win. These points are added to each player's current score.
+            set they win. These points are added to each player&apos;s current score.
           </p>
           <p>
             If the winner is the lower-ranked player, meaning the player with fewer points before the match, the
-            winner's current score is replaced by the opponent's score before the match, plus 5 points minus the number
+            winner&apos;s current score is replaced by the opponent&apos;s score before the match, plus 5 points minus the number
             of sets won by the loser. The loser keeps their current score and receives 1 point for each set they win.
           </p>
           <div className="rounded-lg border border-line bg-white p-4">
@@ -69,4 +69,3 @@ export default function RulesPage() {
     </main>
   );
 }
-

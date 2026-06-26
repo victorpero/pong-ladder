@@ -1,6 +1,6 @@
 # Pong Ladder
 
-Pong Ladder is a mobile-first table tennis ladder tournament app. Players join yearly seasons, challenge nearby players above them, register best-of-five match results, and move through a points-based ranking ladder.
+Pong Ladder is a table tennis ladder tournament app. Players join yearly seasons, challenge nearby players above them, register best-of-five match results, and move through a points-based ranking ladder.
 
 ## Tech Stack
 
@@ -23,13 +23,13 @@ npm install
 2. Copy the environment file:
 
 ```bash
-cp .env.example .env
+cp config/env.example .env
 ```
 
 3. Start PostgreSQL:
 
 ```bash
-docker compose up db
+docker compose -f docker/docker-compose.yml --env-file .env up db
 ```
 
 4. Run migrations and seed data:
@@ -52,7 +52,7 @@ Open http://localhost:3000.
 Run the app and database together:
 
 ```bash
-docker compose up --build
+docker compose -f docker/docker-compose.yml --env-file .env up --build
 ```
 
 The app reads `DATABASE_URL` from the Compose environment and connects to the `db` service.
@@ -93,22 +93,23 @@ The scoring rules live in `lib/scoring.ts` and are covered by `tests/scoring.tes
 
 - `DATABASE_URL`: PostgreSQL connection string used by Prisma.
 - `NEXT_PUBLIC_APP_NAME`: Public app name for client-visible configuration.
+- `SESSION_SECRET`: Random server-only secret, at least 32 characters, used to sign HTTP-only session cookies.
 
 ## Project Structure
 
 ```text
 app/                 App Router pages, loading, and error UI
 components/          Reusable UI components
+config/              Environment and test runner templates/config
+docker/              Dockerfile and Docker Compose setup
 lib/                 Prisma client, queries, server actions, scoring, ranking helpers
 prisma/              Prisma schema, migrations, and seed data
 tests/               Vitest unit tests
-Dockerfile           Production-friendly container image
-docker-compose.yml   Local Next.js and PostgreSQL development stack
 ```
 
 ## Assumptions
 
 - Authentication is intentionally simple for the MVP: users have hashed passwords in the database, but login/session management is left structured for a later hardening pass.
+- Session tokens are signed with `SESSION_SECRET` and stored in HTTP-only cookies. Do not commit real secrets.
 - Match registration is trusted server-side form submission for now. The server validates player IDs, season participation, and valid best-of-five results.
 - A second decline for the same challenger/challenged pair records a 3-0 forfeit win for the challenger.
-

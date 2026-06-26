@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogOut, UserCircle } from "lucide-react";
 
 const links = [
   ["Ladder", "/ladder"],
@@ -19,19 +20,38 @@ export function NavBar() {
             <span className="block text-xs font-medium text-stone-500">Season rankings and challenge play</span>
           </span>
         </Link>
-        <nav className="flex gap-2 overflow-x-auto pb-1">
-          {links.map(([label, href]) => (
+        <div className="flex items-center gap-3">
+          <nav aria-label="Primary navigation" className="flex flex-1 gap-2 overflow-x-auto pb-1">
+            {links.map(([label, href]) => (
+              <Link
+                key={href}
+                href={href}
+                className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:border-court-500 hover:text-court-700"
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+          <nav aria-label="Account navigation" className="ml-auto flex shrink-0 gap-2 pb-1">
             <Link
-              key={href}
-              href={href}
-              className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:border-court-500 hover:text-court-700"
+              href="/account"
+              aria-label="My account"
+              title="My account"
+              className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-stone-700 transition hover:border-court-500 hover:text-court-700"
             >
-              {label}
+              <UserCircle aria-hidden="true" size={19} strokeWidth={2.2} />
             </Link>
-          ))}
-        </nav>
+            <Link
+              href="/logout"
+              aria-label="Log out"
+              title="Log out"
+              className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-stone-700 transition hover:border-red-300 hover:text-red-700"
+            >
+              <LogOut aria-hidden="true" size={18} strokeWidth={2.2} />
+            </Link>
+          </nav>
+        </div>
       </div>
     </header>
   );
 }
-
