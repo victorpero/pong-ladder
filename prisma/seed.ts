@@ -34,18 +34,31 @@ async function main() {
   ];
 
   const users = await Promise.all(
-    players.map((player) =>
+    [
       prisma.user.create({
         data: {
-          username: player.username,
-          fullName: player.fullName,
-          email: `${player.username.toLowerCase()}@pong.local`,
+          username: "admin",
+          fullName: "Pong Ladder Admin",
+          email: "admin@pong.local",
           passwordHash,
-          teamId: player.teamId
+          isAdmin: true
         }
-      })
-    )
+      }),
+      ...players.map((player) =>
+        prisma.user.create({
+          data: {
+            username: player.username,
+            fullName: player.fullName,
+            email: `${player.username.toLowerCase()}@pong.local`,
+            passwordHash,
+            teamId: player.teamId
+          }
+        })
+      )
+    ]
   );
+
+  const ladderUsers = users.slice(1);
 
   const currentSeasonNumber = Math.floor(new Date().getMonth() / 3) + 1;
   const seasons = await Promise.all(
@@ -67,7 +80,7 @@ async function main() {
   const startingPoints = [41, 32, 28, 22, 19, 16, 14, 11];
 
   await Promise.all(
-    users.map((user, index) =>
+    ladderUsers.map((user, index) =>
       prisma.seasonPlayer.create({
         data: {
           seasonId: season.id,
@@ -83,8 +96,8 @@ async function main() {
   const completedChallenge = await prisma.challenge.create({
     data: {
       seasonId: season.id,
-      challengerId: users[3].id,
-      challengedId: users[1].id,
+      challengerId: ladderUsers[3].id,
+      challengedId: ladderUsers[1].id,
       status: ChallengeStatus.Completed,
       declinedCount: 0,
       completedAt: new Date(`${year}-03-14T18:00:00.000Z`)
@@ -93,16 +106,16 @@ async function main() {
 
   await registerSeedMatch({
     seasonId: season.id,
-    winnerId: users[0].id,
-    loserId: users[2].id,
+    winnerId: ladderUsers[0].id,
+    loserId: ladderUsers[2].id,
     loserSets: 2,
     playedAt: new Date(`${year}-02-10T18:00:00.000Z`)
   });
 
   await registerSeedMatch({
     seasonId: season.id,
-    winnerId: users[3].id,
-    loserId: users[1].id,
+    winnerId: ladderUsers[3].id,
+    loserId: ladderUsers[1].id,
     loserSets: 1,
     playedAt: new Date(`${year}-03-14T18:00:00.000Z`),
     challengeId: completedChallenge.id
@@ -110,8 +123,8 @@ async function main() {
 
   await registerSeedMatch({
     seasonId: season.id,
-    winnerId: users[4].id,
-    loserId: users[5].id,
+    winnerId: ladderUsers[4].id,
+    loserId: ladderUsers[5].id,
     loserSets: 0,
     playedAt: new Date(`${year}-04-02T17:30:00.000Z`)
   });
@@ -120,22 +133,22 @@ async function main() {
     data: [
       {
         seasonId: season.id,
-        challengerId: users[5].id,
-        challengedId: users[4].id,
+        challengerId: ladderUsers[5].id,
+        challengedId: ladderUsers[4].id,
         status: ChallengeStatus.Pending,
         declinedCount: 0
       },
       {
         seasonId: season.id,
-        challengerId: users[7].id,
-        challengedId: users[6].id,
+        challengerId: ladderUsers[7].id,
+        challengedId: ladderUsers[6].id,
         status: ChallengeStatus.Accepted,
         declinedCount: 0
       },
       {
         seasonId: season.id,
-        challengerId: users[2].id,
-        challengedId: users[0].id,
+        challengerId: ladderUsers[2].id,
+        challengedId: ladderUsers[0].id,
         status: ChallengeStatus.Declined,
         declinedCount: 1,
         completedAt: new Date(`${year}-05-01T12:00:00.000Z`)
