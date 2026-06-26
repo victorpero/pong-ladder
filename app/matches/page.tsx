@@ -1,5 +1,7 @@
 import { EmptyState } from "@/components/EmptyState";
+import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { createSeason, registerMatchResult } from "@/lib/actions";
+import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
@@ -24,6 +26,17 @@ export default async function MatchesPage() {
         orderBy: { createdAt: "desc" }
       })
     : [];
+  const usersForNames = [
+    ...ladder.map((entry) => entry.user),
+    ...matches.flatMap((match) => [match.winner, match.loser]),
+    ...openChallenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
+  ];
+  const publicNames = getPublicPlayerNames(uniqueUsers(usersForNames));
+  const playerOptions = ladder.map((entry) => ({
+    id: entry.userId,
+    label: publicNames.get(entry.userId) ?? entry.user.username,
+    detail: `#${entry.currentRank} · ${entry.points} points`
+  }));
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -43,7 +56,8 @@ export default async function MatchesPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-lg font-black">
-                        {match.winner.username} {match.winnerSets}-{match.loserSets} {match.loser.username}
+                        {publicNames.get(match.winnerId) ?? match.winner.username} {match.winnerSets}-{match.loserSets}{" "}
+                        {publicNames.get(match.loserId) ?? match.loser.username}
                       </p>
                       <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
                     </div>
@@ -71,26 +85,8 @@ export default async function MatchesPage() {
             <h2 className="text-xl font-black">Register match</h2>
             <form action={registerMatchResult} className="mt-4 grid gap-3">
               <input type="hidden" name="seasonId" value={season?.id ?? ""} />
-              <label className="grid gap-1">
-                <span className="label">Winner</span>
-                <select className="field" name="winnerId" required>
-                  {ladder.map((entry) => (
-                    <option key={entry.userId} value={entry.userId}>
-                      {entry.user.username}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1">
-                <span className="label">Loser</span>
-                <select className="field" name="loserId" required>
-                  {ladder.map((entry) => (
-                    <option key={entry.userId} value={entry.userId}>
-                      {entry.user.username}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <PlayerCombobox name="winnerId" label="Winner" players={playerOptions} disabled={!season || ladder.length < 2} />
+              <PlayerCombobox name="loserId" label="Loser" players={playerOptions} disabled={!season || ladder.length < 2} />
               <label className="grid gap-1">
                 <span className="label">Result</span>
                 <select className="field" name="loserSets" required>
@@ -109,7 +105,8 @@ export default async function MatchesPage() {
                   <option value="">No related challenge</option>
                   {openChallenges.map((challenge) => (
                     <option key={challenge.id} value={challenge.id}>
-                      {challenge.challenger.username} vs {challenge.challenged.username}
+                      {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
+                      {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                     </option>
                   ))}
                 </select>
@@ -152,4 +149,8 @@ export default async function MatchesPage() {
       </div>
     </main>
   );
+}
+
+function uniqueUsers<T extends { id: string }>(users: T[]) {
+  return Array.from(new Map(users.map((user) => [user.id, user])).values());
 }

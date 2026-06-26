@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LogOut, UserCircle } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const links = [
   ["Ladder", "/ladder"],
@@ -33,6 +34,7 @@ export function NavBar() {
             ))}
           </nav>
           <nav aria-label="Account navigation" className="ml-auto flex shrink-0 gap-2 pb-1">
+            <NotificationBell />
             <Link
               href="/account"
               aria-label="My account"

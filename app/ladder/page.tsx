@@ -1,7 +1,11 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
+import { JoinSeasonToggle } from "@/components/JoinSeasonToggle";
 import { StatCard } from "@/components/StatCard";
+import { getPublicPlayerNames } from "@/lib/display-name";
 import { getActiveSeason, getLadder } from "@/lib/queries";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,9 @@ export default async function LadderPage() {
   }
 
   const ladder = await getLadder(season.id);
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
+  const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
   const totalMatches = ladder.reduce((sum, player) => sum + player.matchesPlayed, 0) / 2;
 
   return (
@@ -34,6 +41,10 @@ export default async function LadderPage() {
           <StatCard label="Matches" value={totalMatches} />
           <StatCard label="Year" value={season.year} />
         </div>
+      </section>
+
+      <section className="mb-6">
+        <JoinSeasonToggle joined={Boolean(currentPlayer)} hasActiveSeason={Boolean(season)} />
       </section>
 
       <section className="section-band">
@@ -63,7 +74,7 @@ export default async function LadderPage() {
                   <p className="text-3xl font-black text-court-700">#{entry.currentRank}</p>
                 </div>
                 <div>
-                  <p className="text-lg font-black">{entry.user.username}</p>
+                  <p className="text-lg font-black">{publicNames.get(entry.userId) ?? entry.user.username}</p>
                   <p className="text-sm text-stone-500">{entry.user.email}</p>
                 </div>
                 <Score label="Points" value={entry.points} strong />

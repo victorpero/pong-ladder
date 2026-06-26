@@ -56,12 +56,28 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <input className="field" name="username" autoComplete="username" minLength={2} required />
           </label>
           <label className="grid gap-1">
+            <span className="label">Full name</span>
+            <input className="field" name="fullName" autoComplete="name" placeholder="Victor Per Olofsson" minLength={2} required />
+            <span className="text-xs text-stone-500">
+              You can include multiple last names. Only your first name and last-name initial are shown publicly.
+            </span>
+          </label>
+          <label className="grid gap-1">
             <span className="label">Email</span>
             <input className="field" name="email" type="email" autoComplete="email" required />
           </label>
           <label className="grid gap-1">
             <span className="label">Password</span>
             <input className="field" name="password" type="password" autoComplete="new-password" minLength={8} required />
+          </label>
+          <label className="flex items-start gap-3 rounded-md border border-line bg-stone-50 p-3">
+            <input className="mt-1 h-4 w-4" name="joinCurrentSeason" type="checkbox" defaultChecked />
+            <span>
+              <span className="block text-sm font-bold">Join current season</span>
+              <span className="mt-1 block text-xs leading-5 text-stone-500">
+                Join now to appear on the ladder and become available for matches and challenges.
+              </span>
+            </span>
           </label>
           {createState.error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{createState.error}</p> : null}
           <SubmitButton label="Create account" pendingLabel="Creating..." />

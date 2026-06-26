@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
+import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate, formatDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
@@ -53,14 +54,24 @@ export default async function AccountPage() {
         })
       ])
     : [[], []];
+  const publicNames = getPublicPlayerNames(
+    uniqueUsers([
+      user,
+      ...ladder.map((item) => item.user),
+      ...matches.flatMap((match) => [match.winner, match.loser]),
+      ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
+    ])
+  );
+  const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
 
   return (
     <main className="page-shell">
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <div className="section-band">
           <p className="label">My account</p>
-          <h1 className="mt-1 text-3xl font-black">{user.username}</h1>
+          <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
           <p className="mt-2 text-sm text-stone-600">{user.email}</p>
+          <p className="mt-1 text-sm text-stone-500">Full name: {user.fullName}</p>
           <p className="mt-4 text-sm text-stone-500">Account created {formatDate(user.createdAt)}</p>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -87,12 +98,14 @@ export default async function AccountPage() {
                   <article key={match.id} className="rounded-lg border border-line bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="font-black">
-                        {won ? "Win" : "Loss"} vs {won ? match.loser.username : match.winner.username}
+                        {won ? "Win" : "Loss"} vs{" "}
+                        {publicNames.get(won ? match.loserId : match.winnerId) ??
+                          (won ? match.loser.username : match.winner.username)}
                       </p>
                       <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
                     </div>
                     <p className="mt-2 text-sm text-stone-600">
-                      {match.winner.username} won {match.winnerSets}-{match.loserSets}
+                      {publicNames.get(match.winnerId) ?? match.winner.username} won {match.winnerSets}-{match.loserSets}
                     </p>
                   </article>
                 );
@@ -114,7 +127,8 @@ export default async function AccountPage() {
                 <article key={challenge.id} className="rounded-lg border border-line bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-black">
-                      {challenge.challenger.username} vs {challenge.challenged.username}
+                      {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
+                      {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                     </p>
                     <StatusBadge status={challenge.status} />
                   </div>
@@ -129,3 +143,6 @@ export default async function AccountPage() {
   );
 }
 
+function uniqueUsers<T extends { id: string }>(users: T[]) {
+  return Array.from(new Map(users.map((user) => [user.id, user])).values());
+}

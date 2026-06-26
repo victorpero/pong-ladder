@@ -18,6 +18,7 @@ enum ChallengeStatus {
 model User {
   id              String         @id @default(cuid())
   username        String         @unique
+  fullName        String
   email           String         @unique
   passwordHash    String
   createdAt       DateTime       @default(now())
@@ -29,6 +30,7 @@ model User {
   challengesTaken Challenge[]    @relation("Challenged")
 
   @@index([username])
+  @@index([fullName])
 }
 
 model Season {
@@ -110,4 +112,3 @@ model Challenge {
   @@index([challengerId])
   @@index([challengedId])
 }
-

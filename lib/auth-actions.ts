@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions } from "@/lib/session";
 
 export type AuthFormState = {
@@ -19,6 +20,7 @@ const loginSchema = z.object({
 
 const createAccountSchema = z.object({
   username: z.string().trim().min(2, "Username must be at least 2 characters.").max(30),
+  fullName: z.string().trim().min(2, "Enter your full name.").max(120),
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string().min(8, "Password must be at least 8 characters.")
 });
@@ -88,21 +90,32 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 
 export async function createAccount(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const nextPath = getSafeRedirectPath(formData);
+  const joinCurrentSeason = formData.get("joinCurrentSeason") === "on";
 
   try {
     const parsed = createAccountSchema.parse({
       username: getValue(formData, "username"),
+      fullName: getValue(formData, "fullName"),
       email: getValue(formData, "email"),
       password: getValue(formData, "password")
     });
 
     const passwordHash = await bcrypt.hash(parsed.password, 12);
-    const user = await prisma.user.create({
-      data: {
-        username: parsed.username,
-        email: parsed.email.toLowerCase(),
-        passwordHash
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          username: parsed.username,
+          fullName: parsed.fullName,
+          email: parsed.email.toLowerCase(),
+          passwordHash
+        }
+      });
+
+      if (joinCurrentSeason) {
+        await joinActiveSeasonForUser(tx, createdUser.id);
       }
+
+      return createdUser;
     });
 
     await setSession(user);

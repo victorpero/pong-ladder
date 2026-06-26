@@ -3,6 +3,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { createChallenge } from "@/lib/actions";
+import { canChallengePlayer } from "@/lib/challenge-rules";
+import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
@@ -21,12 +23,8 @@ export default async function PlayerPage({ params }: { params: { id: string } })
 
   const ladder = season ? await getLadder(season.id) : [];
   const entry = ladder.find((item) => item.userId === user.id);
-  const challengers = entry
-    ? ladder.filter((item) => item.currentRank > entry.currentRank && item.currentRank <= entry.currentRank + 3)
-    : [];
-  const challengeTargets = entry
-    ? ladder.filter((item) => item.currentRank < entry.currentRank && item.currentRank >= entry.currentRank - 3)
-    : [];
+  const challengers = entry ? ladder.filter((item) => item.userId !== entry.userId && canChallengePlayer(item, entry)) : [];
+  const challengeTargets = entry ? ladder.filter((item) => item.userId !== entry.userId && canChallengePlayer(entry, item)) : [];
 
   const [matches, challenges] = season
     ? await Promise.all([
@@ -50,6 +48,15 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         })
       ])
     : [[], []];
+  const publicNames = getPublicPlayerNames(
+    uniqueUsers([
+      user,
+      ...ladder.map((item) => item.user),
+      ...matches.flatMap((match) => [match.winner, match.loser]),
+      ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
+    ])
+  );
+  const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
 
   return (
     <main className="page-shell">
@@ -62,7 +69,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="section-band">
           <p className="label">Player</p>
-          <h1 className="mt-1 text-3xl font-black">{user.username}</h1>
+          <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
           <p className="mt-1 text-sm text-stone-500">{user.email}</p>
 
           <h2 className="mt-8 text-xl font-black">Match history</h2>
@@ -71,11 +78,12 @@ export default async function PlayerPage({ params }: { params: { id: string } })
               <EmptyState title="No matches yet" body="Register a match to build this player's history." />
             ) : (
               matches.map((match) => (
-                <div key={match.id} className="rounded-lg border border-line bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="font-bold">
-                      {match.winner.username} beat {match.loser.username} {match.winnerSets}-{match.loserSets}
-                    </p>
+	                <div key={match.id} className="rounded-lg border border-line bg-white p-4">
+	                  <div className="flex flex-wrap items-center justify-between gap-3">
+	                    <p className="font-bold">
+	                      {publicNames.get(match.winnerId) ?? match.winner.username} beat{" "}
+	                      {publicNames.get(match.loserId) ?? match.loser.username} {match.winnerSets}-{match.loserSets}
+	                    </p>
                     <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
                   </div>
                   <p className="mt-2 text-sm text-stone-600">
@@ -99,10 +107,10 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                 <label className="grid gap-1">
                   <span className="label">Challenger</span>
                   <select className="field" name="challengerId" required>
-                    <option value={user.id}>{user.username}</option>
+                    <option value={user.id}>{publicName}</option>
                     {challengers.map((item) => (
                       <option key={item.userId} value={item.userId}>
-                        {item.user.username}
+                        {publicNames.get(item.userId) ?? item.user.username}
                       </option>
                     ))}
                   </select>
@@ -112,7 +120,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                   <select className="field" name="challengedId" required>
                     {challengeTargets.map((item) => (
                       <option key={item.userId} value={item.userId}>
-                        #{item.currentRank} {item.user.username}
+                        #{item.currentRank} {publicNames.get(item.userId) ?? item.user.username}
                       </option>
                     ))}
                   </select>
@@ -134,7 +142,8 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                   <div key={challenge.id} className="rounded-lg border border-line bg-white p-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-bold">
-                        {challenge.challenger.username} {"->"} {challenge.challenged.username}
+                        {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} {"->"}{" "}
+                        {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                       </p>
                       <StatusBadge status={challenge.status} />
                     </div>
@@ -147,4 +156,8 @@ export default async function PlayerPage({ params }: { params: { id: string } })
       </div>
     </main>
   );
+}
+
+function uniqueUsers<T extends { id: string }>(users: T[]) {
+  return Array.from(new Map(users.map((user) => [user.id, user])).values());
 }

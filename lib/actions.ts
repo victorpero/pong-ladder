@@ -3,13 +3,19 @@
 import { ChallengeStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
+import { canChallengePlayer, challengeWindowMessage } from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
+import { joinActiveSeasonForUser } from "@/lib/season-membership";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
+  fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email(),
   password: z.string().min(8)
 });
@@ -55,11 +61,13 @@ function refreshApp() {
   revalidatePath("/players");
   revalidatePath("/matches");
   revalidatePath("/challenges");
+  revalidatePath("/account");
 }
 
 export async function createPlayer(formData: FormData) {
   const parsed = playerSchema.parse({
     username: value(formData, "username"),
+    fullName: value(formData, "fullName"),
     email: value(formData, "email"),
     password: value(formData, "password")
   });
@@ -69,6 +77,7 @@ export async function createPlayer(formData: FormData) {
   await prisma.user.create({
     data: {
       username: parsed.username,
+      fullName: parsed.fullName,
       email: parsed.email,
       passwordHash
     }
@@ -127,6 +136,20 @@ export async function joinSeason(formData: FormData) {
   refreshApp();
 }
 
+export async function joinCurrentSeason() {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/ladder");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await joinActiveSeasonForUser(tx, session.sub);
+  });
+
+  refreshApp();
+}
+
 export async function createChallenge(formData: FormData) {
   const seasonId = idSchema.parse(value(formData, "seasonId"));
   const challengerId = idSchema.parse(value(formData, "challengerId"));
@@ -149,10 +172,8 @@ export async function createChallenge(formData: FormData) {
       throw new Error("Both players must be joined to the season.");
     }
 
-    const rankGap = challenger.currentRank - challenged.currentRank;
-
-    if (rankGap < 1 || rankGap > 3) {
-      throw new Error("A player may only challenge someone up to 3 ladder positions above them.");
+    if (!canChallengePlayer(challenger, challenged)) {
+      throw new Error(challengeWindowMessage);
     }
 
     const priorDeclines = await tx.challenge.count({
@@ -340,4 +361,3 @@ async function registerMatchInTransaction(
 
   await recalculateRanks(tx, input.seasonId);
 }
-

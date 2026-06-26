@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { createPlayer, joinSeason } from "@/lib/actions";
+import { getPublicPlayerNames } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder, getUsers } from "@/lib/queries";
 
@@ -14,6 +15,7 @@ export default async function PlayersPage() {
   ]);
   const ladder = activeSeason ? await getLadder(activeSeason.id) : [];
   const joinedIds = new Set(ladder.map((entry) => entry.userId));
+  const publicNames = getPublicPlayerNames(users);
 
   return (
     <main className="page-shell">
@@ -36,7 +38,7 @@ export default async function PlayersPage() {
                     className="grid gap-3 rounded-lg border border-line bg-white p-4 transition hover:border-court-500 sm:grid-cols-[1fr_120px_120px]"
                   >
                     <div>
-                      <p className="font-black">{user.username}</p>
+                      <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
                       <p className="text-sm text-stone-500">{user.email}</p>
                     </div>
                     <div>
@@ -61,6 +63,13 @@ export default async function PlayersPage() {
               <label className="grid gap-1">
                 <span className="label">Username</span>
                 <input className="field" name="username" required minLength={2} />
+              </label>
+              <label className="grid gap-1">
+                <span className="label">Full name</span>
+                <input className="field" name="fullName" placeholder="Victor Per Olofsson" required minLength={2} />
+                <span className="text-xs text-stone-500">
+                  Multiple last names are allowed. Only first name and last-name initial are shown publicly.
+                </span>
               </label>
               <label className="grid gap-1">
                 <span className="label">Email</span>
@@ -94,7 +103,7 @@ export default async function PlayersPage() {
                 <select className="field" name="userId" required>
                   {users.map((user) => (
                     <option key={user.id} value={user.id} disabled={joinedIds.has(user.id)}>
-                      {user.username}
+                      {publicNames.get(user.id) ?? user.username}
                     </option>
                   ))}
                 </select>

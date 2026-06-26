@@ -13,14 +13,24 @@ async function main() {
 
   const year = new Date().getFullYear();
   const passwordHash = await bcrypt.hash("password123", 12);
-  const names = ["Anders", "Peter", "Kalle", "Pelle", "Maja", "Sara", "Jonas", "Linnea"];
+  const players = [
+    { username: "Anders", fullName: "Anders Persson" },
+    { username: "AndersPalm", fullName: "Anders Palm" },
+    { username: "Kalle", fullName: "Kalle Karlsson" },
+    { username: "Pelle", fullName: "Pelle Pettersson" },
+    { username: "Maja", fullName: "Maja Lind" },
+    { username: "Sara", fullName: "Sara Lund" },
+    { username: "Jonas", fullName: "Jonas Berg" },
+    { username: "Linnea", fullName: "Linnea Berg Andersson" }
+  ];
 
   const users = await Promise.all(
-    names.map((name) =>
+    players.map((player) =>
       prisma.user.create({
         data: {
-          username: name,
-          email: `${name.toLowerCase()}@pong.local`,
+          username: player.username,
+          fullName: player.fullName,
+          email: `${player.username.toLowerCase()}@pong.local`,
           passwordHash
         }
       })
@@ -200,4 +210,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-
