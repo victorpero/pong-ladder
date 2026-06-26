@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { EmptyState } from "@/components/EmptyState";
+import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { acceptChallenge, createChallenge, declineChallenge } from "@/lib/actions";
+import { canChallengePlayer } from "@/lib/challenge-rules";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -14,6 +16,7 @@ export default async function ChallengesPage() {
   const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const season = await getActiveSeason();
   const ladder = season ? await getLadder(season.id) : [];
+  const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const rawChallenges = season
     ? await prisma.challenge.findMany({
         where: { seasonId: season.id },
@@ -37,6 +40,17 @@ export default async function ChallengesPage() {
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
     ])
   );
+  const challengeTargets = currentPlayer
+    ? ladder.filter((entry) => entry.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, entry))
+    : [];
+  const challengeOptions = challengeTargets.map((entry) => ({
+    id: entry.userId,
+    label: `${publicNames.get(entry.userId) ?? entry.user.username} (#${entry.currentRank})`,
+    detail: `${entry.points} pts`
+  }));
+  const currentPlayerName = currentPlayer
+    ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
+    : session?.username ?? "";
 
   return (
     <main className="page-shell">
@@ -107,32 +121,28 @@ export default async function ChallengesPage() {
 
         <aside className="section-band self-start">
           <h2 className="text-xl font-black">Create challenge</h2>
-          <form action={createChallenge} className="mt-4 grid gap-3">
-            <input type="hidden" name="seasonId" value={season?.id ?? ""} />
-            <label className="grid gap-1">
-              <span className="label">Challenger</span>
-              <select className="field" name="challengerId" required>
-                {ladder.map((entry) => (
-                  <option key={entry.userId} value={entry.userId}>
-                    #{entry.currentRank} {publicNames.get(entry.userId) ?? entry.user.username}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1">
-              <span className="label">Challenged player</span>
-              <select className="field" name="challengedId" required>
-                {ladder.map((entry) => (
-                  <option key={entry.userId} value={entry.userId}>
-                    #{entry.currentRank} {publicNames.get(entry.userId) ?? entry.user.username}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button className="button" type="submit" disabled={!season || ladder.length < 2}>
-              Create challenge
-            </button>
-          </form>
+          {!session ? (
+            <p className="mt-3 text-sm text-stone-600">Log in before creating challenges.</p>
+          ) : !season || !currentPlayer ? (
+            <p className="mt-3 text-sm text-stone-600">Join the active season before creating challenges.</p>
+          ) : (
+            <form action={createChallenge} className="mt-4 grid gap-3">
+              <input type="hidden" name="seasonId" value={season.id} />
+              <label className="grid gap-1">
+                <span className="label">Challenger</span>
+                <input className="field" value={currentPlayerName} readOnly />
+              </label>
+              <PlayerCombobox
+                name="challengedId"
+                label="Challenged player"
+                players={challengeOptions}
+                disabled={challengeOptions.length === 0}
+              />
+              <button className="button" type="submit" disabled={challengeOptions.length === 0}>
+                Create challenge
+              </button>
+            </form>
+          )}
         </aside>
       </div>
     </main>

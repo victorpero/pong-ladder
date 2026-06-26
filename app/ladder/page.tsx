@@ -6,6 +6,7 @@ import { StatCard } from "@/components/StatCard";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,7 @@ export default async function LadderPage() {
                 </div>
                 <div>
                   <p className="text-lg font-black">{publicNames.get(entry.userId) ?? entry.user.username}</p>
-                  <p className="text-sm text-stone-500">{entry.user.email}</p>
+                  <p className="text-sm text-stone-500">{getTeamDisplayName(entry.user)}</p>
                 </div>
                 <Score label="Points" value={entry.points} strong />
                 <Score label="Played" value={entry.matchesPlayed} />

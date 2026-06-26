@@ -10,18 +10,26 @@ async function main() {
   await prisma.seasonPlayer.deleteMany();
   await prisma.season.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.team.deleteMany();
 
   const year = new Date().getFullYear();
   const passwordHash = await bcrypt.hash("password123", 12);
+  const seededTeams = await Promise.all(
+    ["Spin Doctors", "Net Gains", "Paddle Force"].map((name) =>
+      prisma.team.create({
+        data: { name }
+      })
+    )
+  );
   const players = [
-    { username: "Anders", fullName: "Anders Persson" },
-    { username: "AndersPalm", fullName: "Anders Palm" },
-    { username: "Kalle", fullName: "Kalle Karlsson" },
-    { username: "Pelle", fullName: "Pelle Pettersson" },
-    { username: "Maja", fullName: "Maja Lind" },
-    { username: "Sara", fullName: "Sara Lund" },
-    { username: "Jonas", fullName: "Jonas Berg" },
-    { username: "Linnea", fullName: "Linnea Berg Andersson" }
+    { username: "Anders", fullName: "Anders Persson", teamId: seededTeams[0].id },
+    { username: "AndersPalm", fullName: "Anders Palm", teamId: seededTeams[0].id },
+    { username: "Kalle", fullName: "Kalle Karlsson", teamId: seededTeams[1].id },
+    { username: "Pelle", fullName: "Pelle Pettersson", teamId: seededTeams[1].id },
+    { username: "Maja", fullName: "Maja Lind", teamId: seededTeams[2].id },
+    { username: "Sara", fullName: "Sara Lund", teamId: seededTeams[2].id },
+    { username: "Jonas", fullName: "Jonas Berg", teamId: null },
+    { username: "Linnea", fullName: "Linnea Berg Andersson", teamId: null }
   ];
 
   const users = await Promise.all(
@@ -31,7 +39,8 @@ async function main() {
           username: player.username,
           fullName: player.fullName,
           email: `${player.username.toLowerCase()}@pong.local`,
-          passwordHash
+          passwordHash,
+          teamId: player.teamId
         }
       })
     )

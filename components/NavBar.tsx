@@ -6,6 +6,7 @@ const links = [
   ["Ladder", "/ladder"],
   ["Matches", "/matches"],
   ["Challenges", "/challenges"],
+  ["Teams", "/teams"],
   ["Players", "/players"],
   ["Rules", "/rules"]
 ];

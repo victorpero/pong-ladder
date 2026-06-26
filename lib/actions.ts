@@ -32,6 +32,10 @@ const seasonSchema = z.object({
   isActive: z.coerce.boolean().default(false)
 });
 
+const teamSchema = z.object({
+  name: z.string().trim().min(2).max(50)
+});
+
 const idSchema = z.string().min(1);
 
 const matchSchema = z.object({
@@ -59,6 +63,7 @@ function maybeValue(formData: FormData, key: string) {
 function refreshApp() {
   revalidatePath("/ladder");
   revalidatePath("/players");
+  revalidatePath("/teams");
   revalidatePath("/matches");
   revalidatePath("/challenges");
   revalidatePath("/account");
@@ -150,9 +155,106 @@ export async function joinCurrentSeason() {
   refreshApp();
 }
 
+export async function createTeam(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/teams");
+  }
+
+  const parsed = teamSchema.parse({
+    name: value(formData, "name")
+  });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const team = await tx.team.create({
+        data: { name: parsed.name }
+      });
+
+      await tx.user.update({
+        where: { id: session.sub },
+        data: { teamId: team.id }
+      });
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error("A team with that name already exists.");
+    }
+
+    throw error;
+  }
+
+  refreshApp();
+}
+
+export async function joinTeam(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/teams");
+  }
+
+  const teamId = idSchema.parse(value(formData, "teamId"));
+
+  await prisma.user.update({
+    where: { id: session.sub },
+    data: { teamId }
+  });
+
+  refreshApp();
+}
+
+export async function leaveTeam() {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/teams");
+  }
+
+  await prisma.user.update({
+    where: { id: session.sub },
+    data: { teamId: null }
+  });
+
+  refreshApp();
+}
+
+export async function deleteTeam(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/teams");
+  }
+
+  const teamId = idSchema.parse(value(formData, "teamId"));
+
+  await prisma.$transaction(async (tx) => {
+    const memberCount = await tx.user.count({
+      where: { teamId }
+    });
+
+    if (memberCount > 0) {
+      throw new Error("Only teams without members can be deleted.");
+    }
+
+    await tx.team.delete({
+      where: { id: teamId }
+    });
+  });
+
+  refreshApp();
+}
+
 export async function createChallenge(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/challenges");
+  }
+
   const seasonId = idSchema.parse(value(formData, "seasonId"));
-  const challengerId = idSchema.parse(value(formData, "challengerId"));
+  const challengerId = session.sub;
   const challengedId = idSchema.parse(value(formData, "challengedId"));
 
   if (challengerId === challengedId) {

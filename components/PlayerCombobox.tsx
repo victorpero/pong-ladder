@@ -12,15 +12,17 @@ export function PlayerCombobox({
   name,
   label,
   players,
+  defaultPlayerId,
   disabled
 }: {
   name: string;
   label: string;
   players: PlayerOption[];
+  defaultPlayerId?: string;
   disabled?: boolean;
 }) {
   const listId = useId();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => players.find((player) => player.id === defaultPlayerId)?.label ?? "");
   const selected = useMemo(
     () => players.find((player) => player.label.toLowerCase() === query.trim().toLowerCase()),
     [players, query]
@@ -51,4 +53,3 @@ export function PlayerCombobox({
     </label>
   );
 }
-

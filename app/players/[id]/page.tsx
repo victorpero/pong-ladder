@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { EmptyState } from "@/components/EmptyState";
+import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { createChallenge } from "@/lib/actions";
@@ -8,13 +10,16 @@ import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ params }: { params: { id: string } }) {
-  const [user, season] = await Promise.all([
-    prisma.user.findUnique({ where: { id: params.id } }),
-    getActiveSeason()
+  const [user, season, session] = await Promise.all([
+    prisma.user.findUnique({ where: { id: params.id }, include: { team: true } }),
+    getActiveSeason(),
+    verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value)
   ]);
 
   if (!user) {
@@ -23,8 +28,10 @@ export default async function PlayerPage({ params }: { params: { id: string } })
 
   const ladder = season ? await getLadder(season.id) : [];
   const entry = ladder.find((item) => item.userId === user.id);
-  const challengers = entry ? ladder.filter((item) => item.userId !== entry.userId && canChallengePlayer(item, entry)) : [];
-  const challengeTargets = entry ? ladder.filter((item) => item.userId !== entry.userId && canChallengePlayer(entry, item)) : [];
+  const currentPlayer = session ? ladder.find((item) => item.userId === session.sub) : null;
+  const challengeTargets = currentPlayer
+    ? ladder.filter((item) => item.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, item))
+    : [];
 
   const [matches, challenges] = season
     ? await Promise.all([
@@ -57,6 +64,15 @@ export default async function PlayerPage({ params }: { params: { id: string } })
     ])
   );
   const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
+  const currentPlayerName = currentPlayer
+    ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
+    : session?.username ?? "";
+  const challengeOptions = challengeTargets.map((item) => ({
+    id: item.userId,
+    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.currentRank})`,
+    detail: `${item.points} pts`
+  }));
+  const defaultChallengeTargetId = challengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
 
   return (
     <main className="page-shell">
@@ -70,7 +86,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         <section className="section-band">
           <p className="label">Player</p>
           <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
-          <p className="mt-1 text-sm text-stone-500">{user.email}</p>
+          <p className="mt-1 text-sm text-stone-500">{getTeamDisplayName(user)}</p>
 
           <h2 className="mt-8 text-xl font-black">Match history</h2>
           <div className="mt-4 grid gap-3">
@@ -99,33 +115,25 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         <aside className="grid gap-4 self-start">
           <section className="section-band">
             <h2 className="text-xl font-black">Challenge actions</h2>
-            {!season || !entry ? (
+            {!session ? (
+              <p className="mt-3 text-sm text-stone-600">Log in before creating challenges.</p>
+            ) : !season || !currentPlayer ? (
               <p className="mt-3 text-sm text-stone-600">Join the active season before creating challenges.</p>
             ) : (
               <form action={createChallenge} className="mt-4 grid gap-3">
                 <input type="hidden" name="seasonId" value={season.id} />
                 <label className="grid gap-1">
                   <span className="label">Challenger</span>
-                  <select className="field" name="challengerId" required>
-                    <option value={user.id}>{publicName}</option>
-                    {challengers.map((item) => (
-                      <option key={item.userId} value={item.userId}>
-                        {publicNames.get(item.userId) ?? item.user.username}
-                      </option>
-                    ))}
-                  </select>
+                  <input className="field" value={currentPlayerName} readOnly />
                 </label>
-                <label className="grid gap-1">
-                  <span className="label">Challenge</span>
-                  <select className="field" name="challengedId" required>
-                    {challengeTargets.map((item) => (
-                      <option key={item.userId} value={item.userId}>
-                        #{item.currentRank} {publicNames.get(item.userId) ?? item.user.username}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="button" type="submit" disabled={challengeTargets.length === 0}>
+                <PlayerCombobox
+                  name="challengedId"
+                  label="Challenge"
+                  players={challengeOptions}
+                  defaultPlayerId={defaultChallengeTargetId}
+                  disabled={challengeOptions.length === 0}
+                />
+                <button className="button" type="submit" disabled={challengeOptions.length === 0}>
                   Create challenge
                 </button>
               </form>

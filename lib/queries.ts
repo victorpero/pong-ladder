@@ -11,7 +11,9 @@ export async function getLadder(seasonId: string) {
   const players = await prisma.seasonPlayer.findMany({
     where: { seasonId },
     include: {
-      user: true
+      user: {
+        include: { team: true }
+      }
     },
     orderBy: [{ currentRank: "asc" }]
   });
@@ -52,7 +54,7 @@ export async function getSeasonOptions() {
 
 export async function getUsers() {
   return prisma.user.findMany({
+    include: { team: true },
     orderBy: { username: "asc" }
   });
 }
-

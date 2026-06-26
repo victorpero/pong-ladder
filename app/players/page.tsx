@@ -4,6 +4,7 @@ import { createPlayer, joinSeason } from "@/lib/actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder, getUsers } from "@/lib/queries";
+import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function PlayersPage() {
                   >
                     <div>
                       <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
-                      <p className="text-sm text-stone-500">{user.email}</p>
+                      <p className="text-sm text-stone-500">{getTeamDisplayName(user)}</p>
                     </div>
                     <div>
                       <p className="stat-label">Rank</p>
