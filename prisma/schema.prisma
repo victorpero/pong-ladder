@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChallengeStatus {
+  Pending
+  Accepted
+  Declined
+  Completed
+  Forfeit
+}
+
+model User {
+  id              String         @id @default(cuid())
+  username        String         @unique
+  email           String         @unique
+  passwordHash    String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  seasonPlayers   SeasonPlayer[]
+  wonMatches      Match[]        @relation("WinnerMatches")
+  lostMatches     Match[]        @relation("LoserMatches")
+  challengesMade  Challenge[]    @relation("Challenger")
+  challengesTaken Challenge[]    @relation("Challenged")
+
+  @@index([username])
+}
+
+model Season {
+  id            String         @id @default(cuid())
+  name          String
+  year          Int
+  startsAt      DateTime
+  endsAt        DateTime?
+  isActive      Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  players       SeasonPlayer[]
+  matches       Match[]
+  challenges    Challenge[]
+
+  @@index([isActive])
+  @@index([year])
+}
+
+model SeasonPlayer {
+  id          String   @id @default(cuid())
+  seasonId    String
+  userId      String
+  points      Int      @default(0)
+  currentRank Int
+  joinedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  season      Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, userId])
+  @@unique([seasonId, currentRank])
+  @@index([seasonId, points])
+  @@index([userId])
+}
+
+model Match {
+  id                  String     @id @default(cuid())
+  seasonId            String
+  winnerId            String
+  loserId             String
+  winnerSets          Int
+  loserSets           Int
+  winnerPointsBefore  Int
+  loserPointsBefore   Int
+  winnerPointsAfter   Int
+  loserPointsAfter    Int
+  playedAt            DateTime   @default(now())
+  challengeId         String?    @unique
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  season              Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  winner              User       @relation("WinnerMatches", fields: [winnerId], references: [id])
+  loser               User       @relation("LoserMatches", fields: [loserId], references: [id])
+  challenge           Challenge? @relation(fields: [challengeId], references: [id])
+
+  @@index([seasonId, playedAt])
+  @@index([winnerId])
+  @@index([loserId])
+}
+
+model Challenge {
+  id            String          @id @default(cuid())
+  seasonId      String
+  challengerId  String
+  challengedId  String
+  status        ChallengeStatus @default(Pending)
+  declinedCount Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  completedAt   DateTime?
+  season        Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  challenger    User            @relation("Challenger", fields: [challengerId], references: [id])
+  challenged    User            @relation("Challenged", fields: [challengedId], references: [id])
+  match         Match?
+
+  @@index([seasonId, status])
+  @@index([challengerId])
+  @@index([challengedId])
+}
+
