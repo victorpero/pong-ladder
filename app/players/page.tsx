@@ -2,16 +2,14 @@ import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { createPlayer, joinSeason } from "@/lib/actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
-import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder, getUsers } from "@/lib/queries";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlayersPage() {
-  const [users, seasons, activeSeason] = await Promise.all([
+  const [users, activeSeason] = await Promise.all([
     getUsers(),
-    prisma.season.findMany({ orderBy: { year: "desc" } }),
     getActiveSeason()
   ]);
   const ladder = activeSeason ? await getLadder(activeSeason.id) : [];
@@ -87,18 +85,8 @@ export default async function PlayersPage() {
           </section>
 
           <section className="section-band">
-            <h2 className="text-xl font-black">Join season</h2>
+            <h2 className="text-xl font-black">Join current season</h2>
             <form action={joinSeason} className="mt-4 grid gap-3">
-              <label className="grid gap-1">
-                <span className="label">Season</span>
-                <select className="field" name="seasonId" defaultValue={activeSeason?.id} required>
-                  {seasons.map((season) => (
-                    <option key={season.id} value={season.id}>
-                      {season.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label className="grid gap-1">
                 <span className="label">Player</span>
                 <select className="field" name="userId" required>
@@ -109,7 +97,7 @@ export default async function PlayersPage() {
                   ))}
                 </select>
               </label>
-              <button className="button" type="submit" disabled={users.length === 0 || seasons.length === 0}>
+              <button className="button" type="submit" disabled={users.length === 0 || !activeSeason}>
                 Join season
               </button>
             </form>

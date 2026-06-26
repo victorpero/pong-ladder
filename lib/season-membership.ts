@@ -1,14 +1,8 @@
 import type { Prisma } from "@prisma/client";
+import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 
 export async function joinActiveSeasonForUser(tx: Prisma.TransactionClient, userId: string) {
-  const season = await tx.season.findFirst({
-    where: { isActive: true },
-    orderBy: { startsAt: "desc" }
-  });
-
-  if (!season) {
-    return null;
-  }
+  const season = await ensureCurrentSeason(tx);
 
   const existing = await tx.seasonPlayer.findUnique({
     where: {
@@ -36,4 +30,3 @@ export async function joinActiveSeasonForUser(tx: Prisma.TransactionClient, user
     }
   });
 }
-

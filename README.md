@@ -1,6 +1,6 @@
 # Pong Ladder
 
-Pong Ladder is a table tennis ladder tournament app. Players join yearly seasons, challenge nearby players above them, register best-of-five match results, and move through a points-based ranking ladder.
+Pong Ladder is a table tennis ladder tournament app. Players join fixed quarterly seasons, challenge nearby players above them, register best-of-five match results, and move through player and team ranking ladders.
 
 ## Tech Stack
 
@@ -77,7 +77,7 @@ Seed the database:
 npm run prisma:seed
 ```
 
-The seed creates one active season for the current year, 8 players, completed matches, and pending/completed challenge history.
+The seed creates four fixed seasons for the current year, 8 players, teams, completed matches, and pending/completed challenge history.
 
 ## Tests
 

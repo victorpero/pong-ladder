@@ -20,18 +20,6 @@ const playerSchema = z.object({
   password: z.string().min(8)
 });
 
-const seasonSchema = z.object({
-  name: z.string().trim().min(3),
-  year: z.coerce.number().int().min(2000).max(2100),
-  startsAt: z.coerce.date(),
-  endsAt: z
-    .string()
-    .trim()
-    .optional()
-    .transform((value) => (value ? new Date(value) : undefined)),
-  isActive: z.coerce.boolean().default(false)
-});
-
 const teamSchema = z.object({
   name: z.string().trim().min(2).max(50)
 });
@@ -91,51 +79,11 @@ export async function createPlayer(formData: FormData) {
   refreshApp();
 }
 
-export async function createSeason(formData: FormData) {
-  const parsed = seasonSchema.parse({
-    name: value(formData, "name"),
-    year: value(formData, "year"),
-    startsAt: value(formData, "startsAt"),
-    endsAt: maybeValue(formData, "endsAt"),
-    isActive: formData.get("isActive") === "on"
-  });
-
-  await prisma.$transaction(async (tx) => {
-    if (parsed.isActive) {
-      await tx.season.updateMany({ data: { isActive: false } });
-    }
-
-    await tx.season.create({
-      data: parsed
-    });
-  });
-
-  refreshApp();
-}
-
 export async function joinSeason(formData: FormData) {
-  const seasonId = idSchema.parse(value(formData, "seasonId"));
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.seasonPlayer.findUnique({
-      where: { seasonId_userId: { seasonId, userId } }
-    });
-
-    if (existing) {
-      return;
-    }
-
-    const count = await tx.seasonPlayer.count({ where: { seasonId } });
-
-    await tx.seasonPlayer.create({
-      data: {
-        seasonId,
-        userId,
-        points: 0,
-        currentRank: count + 1
-      }
-    });
+    await joinActiveSeasonForUser(tx, userId);
   });
 
   refreshApp();

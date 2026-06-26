@@ -1,6 +1,6 @@
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
-import { createSeason, registerMatchResult } from "@/lib/actions";
+import { registerMatchResult } from "@/lib/actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -117,34 +117,6 @@ export default async function MatchesPage() {
             </form>
           </section>
 
-          <section className="section-band">
-            <h2 className="text-xl font-black">Create season</h2>
-            <form action={createSeason} className="mt-4 grid gap-3">
-              <label className="grid gap-1">
-                <span className="label">Name</span>
-                <input className="field" name="name" placeholder="2026 Club Ladder" required />
-              </label>
-              <label className="grid gap-1">
-                <span className="label">Year</span>
-                <input className="field" name="year" type="number" defaultValue={new Date().getFullYear()} required />
-              </label>
-              <label className="grid gap-1">
-                <span className="label">Start date</span>
-                <input className="field" name="startsAt" type="date" defaultValue={today} required />
-              </label>
-              <label className="grid gap-1">
-                <span className="label">End date</span>
-                <input className="field" name="endsAt" type="date" />
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input name="isActive" type="checkbox" defaultChecked />
-                Active season
-              </label>
-              <button className="button" type="submit">
-                Create season
-              </button>
-            </form>
-          </section>
         </aside>
       </div>
     </main>

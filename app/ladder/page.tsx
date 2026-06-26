@@ -4,7 +4,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { JoinSeasonToggle } from "@/components/JoinSeasonToggle";
 import { StatCard } from "@/components/StatCard";
 import { getPublicPlayerNames } from "@/lib/display-name";
-import { getActiveSeason, getLadder } from "@/lib/queries";
+import { formatDate } from "@/lib/format";
+import { getActiveSeason, getLadder, getTeamLadder } from "@/lib/queries";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { getTeamDisplayName } from "@/lib/team-display";
 
@@ -16,30 +17,32 @@ export default async function LadderPage() {
   if (!season) {
     return (
       <main className="page-shell">
-        <EmptyState title="No active season" body="Create or seed a season to start building the yearly ladder." />
+        <EmptyState title="No active season" body="The current fixed season could not be loaded." />
       </main>
     );
   }
 
-  const ladder = await getLadder(season.id);
+  const [ladder, teamLadder] = await Promise.all([getLadder(season.id), getTeamLadder(season.id)]);
   const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
-  const totalMatches = ladder.reduce((sum, player) => sum + player.matchesPlayed, 0) / 2;
 
   return (
     <main className="page-shell">
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <div className="section-band">
           <p className="label">Active season</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-4xl">{season.name}</h1>
+          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Season {season.seasonNumber}</h1>
+          <p className="mt-2 text-sm font-semibold text-stone-500">
+            {formatDate(season.startsAt)} to {formatDate(season.endsAt ?? season.startsAt)}
+          </p>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
-            Challenge players above you, register best-of-five results, and climb the yearly points ladder.
+            Challenge players above you, register best-of-five results, and climb the season points ladder.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Players" value={ladder.length} />
-          <StatCard label="Matches" value={totalMatches} />
+          <StatCard label="Teams" value={teamLadder.length} />
           <StatCard label="Year" value={season.year} />
         </div>
       </section>
@@ -83,6 +86,47 @@ export default async function LadderPage() {
                 <Score label="Wins" value={entry.wins} />
                 <Score label="Losses" value={entry.losses} />
               </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="section-band mt-6">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <p className="label">Team ladder</p>
+            <h2 className="mt-1 text-2xl font-black">Season {season.seasonNumber} team standings</h2>
+          </div>
+          <Link className="button-secondary" href="/teams">
+            Manage teams
+          </Link>
+        </div>
+
+        {teamLadder.length === 0 ? (
+          <EmptyState title="No team standings yet" body="Join a team to appear on the season team ladder." />
+        ) : (
+          <div className="grid gap-3">
+            {teamLadder.map((team, index) => (
+              <article
+                key={team.id}
+                className="rank-in grid gap-3 rounded-lg border border-line bg-white p-4 sm:grid-cols-[72px_1fr_90px_72px_72px_72px]"
+                style={{ animationDelay: `${index * 35}ms` }}
+              >
+                <div>
+                  <p className="stat-label">Rank</p>
+                  <p className="text-3xl font-black text-court-700">#{team.currentRank}</p>
+                </div>
+                <div>
+                  <p className="text-lg font-black">{team.name}</p>
+                  <p className="text-sm text-stone-500">
+                    {team.players} player{team.players === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <Score label="Points" value={team.points} strong />
+                <Score label="Played" value={team.matchesPlayed} />
+                <Score label="Wins" value={team.wins} />
+                <Score label="Losses" value={team.losses} />
+              </article>
             ))}
           </div>
         )}

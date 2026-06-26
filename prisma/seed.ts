@@ -1,5 +1,6 @@
 import { ChallengeStatus, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { getSeasonName } from "../lib/fixed-seasons";
 import { calculateMatchScore } from "../lib/scoring";
 
 const prisma = new PrismaClient();
@@ -46,15 +47,22 @@ async function main() {
     )
   );
 
-  const season = await prisma.season.create({
-    data: {
-      name: `${year} Club Ladder`,
-      year,
-      startsAt: new Date(`${year}-01-01T00:00:00.000Z`),
-      endsAt: new Date(`${year}-12-31T23:59:59.000Z`),
-      isActive: true
-    }
-  });
+  const currentSeasonNumber = Math.floor(new Date().getMonth() / 3) + 1;
+  const seasons = await Promise.all(
+    [1, 2, 3, 4].map((seasonNumber) =>
+      prisma.season.create({
+        data: {
+          name: getSeasonName(year, seasonNumber),
+          year,
+          seasonNumber,
+          startsAt: new Date(Date.UTC(year, (seasonNumber - 1) * 3, 1)),
+          endsAt: new Date(Date.UTC(year, seasonNumber * 3, 1)),
+          isActive: seasonNumber === currentSeasonNumber
+        }
+      })
+    )
+  );
+  const season = seasons[currentSeasonNumber - 1];
 
   const startingPoints = [41, 32, 28, 22, 19, 16, 14, 11];
 
