@@ -2,7 +2,7 @@
 
 import { Bell } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type NotificationState = {
   pendingChallenges: number;
@@ -16,38 +16,38 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<NotificationState>({ pendingChallenges: 0, challenges: [] });
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await fetch("/api/notifications", {
+        cache: "no-store"
+      });
 
-    async function loadNotifications() {
-      try {
-        const response = await fetch("/api/notifications", {
-          cache: "no-store"
-        });
+      if (!response.ok) {
+        return;
+      }
 
-        if (!response.ok) {
-          return;
-        }
+      const data = (await response.json()) as NotificationState;
 
-        const data = (await response.json()) as NotificationState;
-
-        if (!cancelled) {
-          setNotifications(data);
-        }
-      } catch {
-        if (!cancelled) {
-          setNotifications({ pendingChallenges: 0, challenges: [] });
-        }
+      if (isMountedRef.current) {
+        setNotifications(data);
+      }
+    } catch {
+      if (isMountedRef.current) {
+        setNotifications({ pendingChallenges: 0, challenges: [] });
       }
     }
+  }, []);
 
+  useEffect(() => {
+    isMountedRef.current = true;
     loadNotifications();
 
     return () => {
-      cancelled = true;
+      isMountedRef.current = false;
     };
-  }, []);
+  }, [loadNotifications]);
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -71,6 +71,30 @@ export function NotificationBell() {
     };
   }, []);
 
+  useEffect(() => {
+    function refreshAfterChallengeResponse(event: SubmitEvent) {
+      const form = event.target;
+
+      if (!(form instanceof HTMLFormElement) || !form.querySelector('input[name="challengeId"]')) {
+        return;
+      }
+
+      window.setTimeout(loadNotifications, 500);
+      window.setTimeout(loadNotifications, 1500);
+      window.setTimeout(loadNotifications, 3000);
+    }
+
+    document.addEventListener("submit", refreshAfterChallengeResponse);
+    window.addEventListener("focus", loadNotifications);
+    const intervalId = window.setInterval(loadNotifications, 15000);
+
+    return () => {
+      document.removeEventListener("submit", refreshAfterChallengeResponse);
+      window.removeEventListener("focus", loadNotifications);
+      window.clearInterval(intervalId);
+    };
+  }, [loadNotifications]);
+
   const count = notifications.pendingChallenges;
   const label = count > 0 ? `${count} pending challenge${count === 1 ? "" : "s"}` : "No notifications";
 
@@ -81,7 +105,14 @@ export function NotificationBell() {
         aria-label={label}
         aria-expanded={isOpen}
         title={label}
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={() => {
+          const nextIsOpen = !isOpen;
+          setIsOpen(nextIsOpen);
+
+          if (nextIsOpen) {
+            void loadNotifications();
+          }
+        }}
         className="relative grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-stone-700 transition hover:border-court-500 hover:text-court-700"
       >
         <Bell aria-hidden="true" size={18} strokeWidth={2.2} />

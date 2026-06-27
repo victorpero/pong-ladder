@@ -14,7 +14,7 @@ const links = [
 
 export function NavBar() {
   return (
-    <header className="border-b border-line bg-white/90 backdrop-blur">
+    <header className="relative z-50 border-b border-line bg-white/90 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/ladder" className="flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-md bg-ink text-sm font-black text-white">PL</span>
