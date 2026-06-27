@@ -66,9 +66,6 @@ export default async function PlayersPage() {
               <label className="grid gap-1">
                 <span className="label">Full name</span>
                 <input className="field" name="fullName" placeholder="Victor Per Olofsson" required minLength={2} />
-                <span className="text-xs text-stone-500">
-                  Multiple last names are allowed. Only first name and last-name initial are shown publicly.
-                </span>
               </label>
               <label className="grid gap-1">
                 <span className="label">Email</span>

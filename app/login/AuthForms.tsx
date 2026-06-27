@@ -58,9 +58,6 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
           <label className="grid gap-1">
             <span className="label">Full name</span>
             <input className="field" name="fullName" autoComplete="name" placeholder="Victor Per Olofsson" minLength={2} required />
-            <span className="text-xs text-stone-500">
-              You can include multiple last names. Only your first name and last-name initial are shown publicly.
-            </span>
           </label>
           <label className="grid gap-1">
             <span className="label">Email</span>

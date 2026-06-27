@@ -86,7 +86,8 @@ export default async function ChallengesPage() {
                           </p>
                         ) : null}
                         <p className={needsResponse ? "text-xl font-black" : "text-lg font-black"}>
-                          {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} challenges{" "}
+                          {publicNames.get(challenge.challengerId) ?? challenge.challenger.username}{" "}
+                          <span className="font-bold text-stone-500">challenges</span>{" "}
                           {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                         </p>
                         <p className="text-sm text-stone-500">
