@@ -71,6 +71,7 @@ export default async function ChallengesPage() {
 
                 return (
                   <article
+                    id={challenge.id}
                     key={challenge.id}
                     className={`rounded-lg border bg-white transition ${
                       needsResponse
