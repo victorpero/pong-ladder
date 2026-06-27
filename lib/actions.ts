@@ -250,17 +250,37 @@ export async function createChallenge(formData: FormData) {
 }
 
 export async function acceptChallenge(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/challenges");
+  }
+
   const id = idSchema.parse(value(formData, "challengeId"));
 
-  await prisma.challenge.update({
-    where: { id },
+  const result = await prisma.challenge.updateMany({
+    where: {
+      id,
+      challengedId: session.sub,
+      status: ChallengeStatus.Pending
+    },
     data: { status: ChallengeStatus.Accepted }
   });
+
+  if (result.count === 0) {
+    throw new Error("Only the challenged player can accept a pending challenge.");
+  }
 
   refreshApp();
 }
 
 export async function declineChallenge(formData: FormData) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/challenges");
+  }
+
   const id = idSchema.parse(value(formData, "challengeId"));
 
   await prisma.$transaction(async (tx) => {
@@ -274,6 +294,10 @@ export async function declineChallenge(formData: FormData) {
 
     if (!challenge || challenge.status !== ChallengeStatus.Pending) {
       throw new Error("Only pending challenges can be declined.");
+    }
+
+    if (challenge.challengedId !== session.sub) {
+      throw new Error("Only the challenged player can decline a pending challenge.");
     }
 
     const priorDeclines = await tx.challenge.count({

@@ -98,11 +98,11 @@ export default async function ChallengesPage() {
                       <StatusBadge status={challenge.status} />
                     </div>
 
-                    {challenge.status === "Pending" ? (
+                    {needsResponse ? (
                       <div className="mt-4 flex flex-wrap gap-2">
                         <form action={acceptChallenge}>
                           <input type="hidden" name="challengeId" value={challenge.id} />
-                          <button className={needsResponse ? "button" : "button-secondary"} type="submit">
+                          <button className="button" type="submit">
                             Accept
                           </button>
                         </form>
