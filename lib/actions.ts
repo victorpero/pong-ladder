@@ -9,9 +9,10 @@ import { z } from "zod";
 import { canChallengePlayer, challengeWindowMessage } from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
+import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { SESSION_COOKIE_NAME, type SessionPayload, verifySessionToken } from "@/lib/session";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -57,7 +58,38 @@ function refreshApp() {
   revalidatePath("/account");
 }
 
+async function requireSession(nextPath: string) {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect(`/login?next=${nextPath}`);
+  }
+
+  return session;
+}
+
+async function getIsAdmin(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isAdmin: true }
+  });
+
+  return Boolean(user?.isAdmin);
+}
+
+async function requireAdmin() {
+  const session = await requireSession("/admin");
+
+  if (!(await getIsAdmin(session.sub))) {
+    throw new Error("Admin access required.");
+  }
+
+  return session;
+}
+
 export async function createPlayer(formData: FormData) {
+  await requireAdmin();
+
   const parsed = playerSchema.parse({
     username: value(formData, "username"),
     fullName: value(formData, "fullName"),
@@ -80,6 +112,8 @@ export async function createPlayer(formData: FormData) {
 }
 
 export async function joinSeason(formData: FormData) {
+  await requireAdmin();
+
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
@@ -90,11 +124,7 @@ export async function joinSeason(formData: FormData) {
 }
 
 export async function joinCurrentSeason() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/ladder");
-  }
+  const session = await requireSession("/ladder");
 
   await prisma.$transaction(async (tx) => {
     await joinActiveSeasonForUser(tx, session.sub);
@@ -104,11 +134,7 @@ export async function joinCurrentSeason() {
 }
 
 export async function createTeam(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/teams");
-  }
+  const session = await requireSession("/teams");
 
   const parsed = teamSchema.parse({
     name: value(formData, "name")
@@ -137,11 +163,7 @@ export async function createTeam(formData: FormData) {
 }
 
 export async function joinTeam(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/teams");
-  }
+  const session = await requireSession("/teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -154,11 +176,7 @@ export async function joinTeam(formData: FormData) {
 }
 
 export async function leaveTeam() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/teams");
-  }
+  const session = await requireSession("/teams");
 
   await prisma.user.update({
     where: { id: session.sub },
@@ -169,11 +187,7 @@ export async function leaveTeam() {
 }
 
 export async function deleteTeam(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/teams");
-  }
+  await requireSession("/teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -195,11 +209,8 @@ export async function deleteTeam(formData: FormData) {
 }
 
 export async function createChallenge(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/challenges");
-  }
+  const session = await requireSession("/challenges");
+  consumeRateLimit(getClientRateLimitKey("challenge:create", session.sub), 20, 5 * 60 * 1000);
 
   const seasonId = idSchema.parse(value(formData, "seasonId"));
   const challengerId = session.sub;
@@ -250,11 +261,7 @@ export async function createChallenge(formData: FormData) {
 }
 
 export async function acceptChallenge(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/challenges");
-  }
+  const session = await requireSession("/challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -275,11 +282,7 @@ export async function acceptChallenge(formData: FormData) {
 }
 
 export async function declineChallenge(formData: FormData) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/challenges");
-  }
+  const session = await requireSession("/challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -344,6 +347,9 @@ export async function declineChallenge(formData: FormData) {
 }
 
 export async function registerMatchResult(formData: FormData) {
+  const session = await requireSession("/matches");
+  consumeRateLimit(getClientRateLimitKey("match:register", session.sub), 20, 5 * 60 * 1000);
+
   const parsed = matchSchema.parse({
     seasonId: value(formData, "seasonId"),
     winnerId: value(formData, "winnerId"),
@@ -359,11 +365,64 @@ export async function registerMatchResult(formData: FormData) {
 
   validateBestOfFiveResult(3, parsed.loserSets);
 
+  const isAdmin = await getIsAdmin(session.sub);
+  assertCanRegisterMatch(session, isAdmin, parsed.winnerId, parsed.loserId);
+
   await prisma.$transaction(async (tx) => {
+    if (parsed.challengeId) {
+      await assertAcceptedChallengeForMatch(tx, {
+        challengeId: parsed.challengeId,
+        seasonId: parsed.seasonId,
+        winnerId: parsed.winnerId,
+        loserId: parsed.loserId
+      });
+    }
+
     await registerMatchInTransaction(tx, parsed);
   });
 
   refreshApp();
+}
+
+function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {
+  if (isAdmin || session.sub === winnerId || session.sub === loserId) {
+    return;
+  }
+
+  throw new Error("Only admins or match participants can register match results.");
+}
+
+async function assertAcceptedChallengeForMatch(
+  tx: Prisma.TransactionClient,
+  input: {
+    challengeId: string;
+    seasonId: string;
+    winnerId: string;
+    loserId: string;
+  }
+) {
+  const challenge = await tx.challenge.findUnique({
+    where: { id: input.challengeId },
+    select: {
+      seasonId: true,
+      challengerId: true,
+      challengedId: true,
+      status: true
+    }
+  });
+
+  if (!challenge || challenge.status !== ChallengeStatus.Accepted) {
+    throw new Error("Only accepted challenges can be attached to match results.");
+  }
+
+  const matchPlayerIds = new Set([input.winnerId, input.loserId]);
+  const challengePlayerIds = new Set([challenge.challengerId, challenge.challengedId]);
+  const matchesChallengePlayers =
+    matchPlayerIds.size === challengePlayerIds.size && [...matchPlayerIds].every((playerId) => challengePlayerIds.has(playerId));
+
+  if (challenge.seasonId !== input.seasonId || !matchesChallengePlayers) {
+    throw new Error("Match results must use the same season and players as the accepted challenge.");
+  }
 }
 
 async function registerMatchInTransaction(

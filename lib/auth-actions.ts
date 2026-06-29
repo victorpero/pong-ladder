@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions } from "@/lib/session";
 
@@ -48,6 +49,10 @@ function authError(error: unknown): AuthFormState {
     return { error: "Session secret is not configured. Add SESSION_SECRET to your environment." };
   }
 
+  if (error instanceof RateLimitError) {
+    return { error: error.message };
+  }
+
   return { error: "Something went wrong. Please try again." };
 }
 
@@ -65,10 +70,13 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
   const nextPath = getSafeRedirectPath(formData);
 
   try {
+    consumeRateLimit(getClientRateLimitKey("auth:login"), 30, 5 * 60 * 1000);
+
     const parsed = loginSchema.parse({
       identifier: getValue(formData, "identifier"),
       password: getValue(formData, "password")
     });
+    consumeRateLimit(getClientRateLimitKey("auth:login:identifier", parsed.identifier.toLowerCase()), 8, 5 * 60 * 1000);
 
     const user = await prisma.user.findFirst({
       where: {
@@ -93,6 +101,8 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
   const joinCurrentSeason = formData.get("joinCurrentSeason") === "on";
 
   try {
+    consumeRateLimit(getClientRateLimitKey("auth:create-account"), 5, 60 * 60 * 1000);
+
     const parsed = createAccountSchema.parse({
       username: getValue(formData, "username"),
       fullName: getValue(formData, "fullName"),

@@ -21,7 +21,7 @@ export default async function MatchesPage() {
     : [];
   const openChallenges = season
     ? await prisma.challenge.findMany({
-        where: { seasonId: season.id, status: { in: ["Accepted", "Pending"] } },
+        where: { seasonId: season.id, status: "Accepted" },
         include: { challenger: true, challenged: true },
         orderBy: { createdAt: "desc" }
       })
