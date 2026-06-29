@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { registerMatchResult } from "@/lib/actions";
@@ -5,12 +7,14 @@ import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function MatchesPage() {
+export default async function MatchesPage({ searchParams }: { searchParams?: { challengeId?: string } }) {
   const season = await getActiveSeason();
   const ladder = season ? await getLadder(season.id) : [];
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const matches = season
     ? await prisma.match.findMany({
         where: { seasonId: season.id },
@@ -19,24 +23,36 @@ export default async function MatchesPage() {
         take: 30
       })
     : [];
-  const openChallenges = season
+  const acceptedChallenges = season && session
     ? await prisma.challenge.findMany({
-        where: { seasonId: season.id, status: "Accepted" },
+        where: {
+          seasonId: season.id,
+          status: "Accepted",
+          OR: [{ challengerId: session.sub }, { challengedId: session.sub }]
+        },
         include: { challenger: true, challenged: true },
         orderBy: { createdAt: "desc" }
       })
     : [];
+  const selectedChallenge =
+    acceptedChallenges.find((challenge) => challenge.id === searchParams?.challengeId) ?? acceptedChallenges[0] ?? null;
   const usersForNames = [
     ...ladder.map((entry) => entry.user),
     ...matches.flatMap((match) => [match.winner, match.loser]),
-    ...openChallenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
+    ...acceptedChallenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
   ];
   const publicNames = getPublicPlayerNames(uniqueUsers(usersForNames));
-  const playerOptions = ladder.map((entry) => ({
-    id: entry.userId,
-    label: publicNames.get(entry.userId) ?? entry.user.username,
-    detail: `#${entry.currentRank} · ${entry.points} points`
-  }));
+  const selectedChallengePlayers = selectedChallenge
+    ? [selectedChallenge.challenger, selectedChallenge.challenged].map((player) => {
+        const ladderEntry = ladder.find((entry) => entry.userId === player.id);
+
+        return {
+          id: player.id,
+          label: publicNames.get(player.id) ?? player.username,
+          detail: ladderEntry ? `#${ladderEntry.currentRank} · ${ladderEntry.points} points` : "Accepted challenge"
+        };
+      })
+    : [];
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -83,38 +99,70 @@ export default async function MatchesPage() {
         <aside className="grid gap-4 self-start">
           <section className="section-band">
             <h2 className="text-xl font-black">Register match</h2>
-            <form action={registerMatchResult} className="mt-4 grid gap-3">
-              <input type="hidden" name="seasonId" value={season?.id ?? ""} />
-              <PlayerCombobox name="winnerId" label="Winner" players={playerOptions} disabled={!season || ladder.length < 2} />
-              <PlayerCombobox name="loserId" label="Loser" players={playerOptions} disabled={!season || ladder.length < 2} />
-              <label className="grid gap-1">
-                <span className="label">Result</span>
-                <select className="field" name="loserSets" required>
-                  <option value="0">3-0</option>
-                  <option value="1">3-1</option>
-                  <option value="2">3-2</option>
-                </select>
-              </label>
-              <label className="grid gap-1">
-                <span className="label">Date</span>
-                <input className="field" name="playedAt" type="date" defaultValue={today} />
-              </label>
-              <label className="grid gap-1">
-                <span className="label">Challenge</span>
-                <select className="field" name="challengeId" defaultValue="">
-                  <option value="">No related challenge</option>
-                  {openChallenges.map((challenge) => (
-                    <option key={challenge.id} value={challenge.id}>
-                      {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
-                      {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="button" type="submit" disabled={!season || ladder.length < 2}>
-                Save result
-              </button>
-            </form>
+            {acceptedChallenges.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-line bg-white p-4">
+                <p className="text-sm font-semibold text-stone-600">Challenge another player to register a match</p>
+                <Link className="button mt-4" href="/challenges">
+                  Challenge player
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 grid gap-2">
+                  <p className="label">Challenge</p>
+                  <div className="grid gap-2">
+                    {acceptedChallenges.map((challenge) => {
+                      const isSelected = selectedChallenge?.id === challenge.id;
+
+                      return (
+                        <Link
+                          key={challenge.id}
+                          href={`/matches?challengeId=${challenge.id}`}
+                          className={isSelected ? "button" : "button-secondary"}
+                        >
+                          {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
+                          {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {selectedChallenge ? (
+                  <form action={registerMatchResult} className="mt-4 grid gap-3">
+                    <input type="hidden" name="seasonId" value={season?.id ?? ""} />
+                    <input type="hidden" name="challengeId" value={selectedChallenge.id} />
+                    <PlayerCombobox
+                      name="winnerId"
+                      label="Winner"
+                      players={selectedChallengePlayers}
+                      disabled={!season || selectedChallengePlayers.length < 2}
+                    />
+                    <PlayerCombobox
+                      name="loserId"
+                      label="Loser"
+                      players={selectedChallengePlayers}
+                      disabled={!season || selectedChallengePlayers.length < 2}
+                    />
+                    <label className="grid gap-1">
+                      <span className="label">Result</span>
+                      <select className="field" name="loserSets" required>
+                        <option value="0">3-0</option>
+                        <option value="1">3-1</option>
+                        <option value="2">3-2</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1">
+                      <span className="label">Date</span>
+                      <input className="field" name="playedAt" type="date" defaultValue={today} />
+                    </label>
+                    <button className="button" type="submit" disabled={!season || selectedChallengePlayers.length < 2}>
+                      Save result
+                    </button>
+                  </form>
+                ) : null}
+              </>
+            )}
           </section>
 
         </aside>

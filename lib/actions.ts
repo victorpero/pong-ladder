@@ -37,7 +37,7 @@ const matchSchema = z.object({
     .trim()
     .optional()
     .transform((value) => (value ? new Date(value) : new Date())),
-  challengeId: z.string().optional()
+  challengeId: idSchema
 });
 
 function value(formData: FormData, key: string) {
@@ -356,7 +356,7 @@ export async function registerMatchResult(formData: FormData) {
     loserId: value(formData, "loserId"),
     loserSets: value(formData, "loserSets"),
     playedAt: maybeValue(formData, "playedAt"),
-    challengeId: maybeValue(formData, "challengeId")
+    challengeId: value(formData, "challengeId")
   });
 
   if (parsed.winnerId === parsed.loserId) {
@@ -369,14 +369,12 @@ export async function registerMatchResult(formData: FormData) {
   assertCanRegisterMatch(session, isAdmin, parsed.winnerId, parsed.loserId);
 
   await prisma.$transaction(async (tx) => {
-    if (parsed.challengeId) {
-      await assertAcceptedChallengeForMatch(tx, {
-        challengeId: parsed.challengeId,
-        seasonId: parsed.seasonId,
-        winnerId: parsed.winnerId,
-        loserId: parsed.loserId
-      });
-    }
+    await assertAcceptedChallengeForMatch(tx, {
+      challengeId: parsed.challengeId,
+      seasonId: parsed.seasonId,
+      winnerId: parsed.winnerId,
+      loserId: parsed.loserId
+    });
 
     await registerMatchInTransaction(tx, parsed);
   });

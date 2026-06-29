@@ -60,8 +60,8 @@ export default async function LadderPage() {
             <p className="label">Ladder</p>
             <h2 className="mt-1 text-2xl font-black">Current standings</h2>
           </div>
-          <Link className="button-secondary" href="/matches">
-            Register match
+          <Link className="button" href="/challenges">
+            Challenge player
           </Link>
         </div>
 
