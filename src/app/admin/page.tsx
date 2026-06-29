@@ -63,7 +63,7 @@ export default async function AdminPage() {
         <div className="section-band">
           <p className="label">Admin</p>
           <h1 className="mt-1 text-3xl font-black">Root controls</h1>
-          <p className="mt-2 text-sm text-stone-600">Season {seasonLabel}</p>
+          <p className="mt-2 text-sm text-muted">Season {seasonLabel}</p>
         </div>
         <AdminStat label="Season players" value={ladder.length} />
         <AdminStat label="Matches" value={matches.length} />
@@ -86,13 +86,13 @@ export default async function AdminPage() {
                       <p className="font-black">
                         #{entry.currentRank} {publicNames.get(entry.userId) ?? entry.user.username}
                       </p>
-                      <p className="text-sm text-stone-500">
+                      <p className="text-sm text-muted">
                         {entry.points} pts · {getTeamDisplayName(entry.user)}
                       </p>
                     </div>
                     <form action={adminRemoveSeasonPlayer}>
                       <input type="hidden" name="seasonPlayerId" value={entry.id} />
-                      <button className="button-secondary" type="submit">
+                      <button className="button-danger" type="submit">
                         Remove
                       </button>
                     </form>
@@ -114,12 +114,12 @@ export default async function AdminPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
-                    <p className="text-sm text-stone-500">
+                    <p className="text-sm text-muted">
                       {getTeamDisplayName(user)}
                       {user.isAdmin ? " · admin" : ""}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-stone-500">{user.username}</p>
+                  <p className="text-sm font-semibold text-muted">{user.username}</p>
                 </div>
               </article>
             ))}
@@ -143,14 +143,14 @@ export default async function AdminPage() {
                         {publicNames.get(match.winnerId) ?? match.winner.username} {match.winnerSets}-{match.loserSets}{" "}
                         {publicNames.get(match.loserId) ?? match.loser.username}
                       </p>
-                      <p className="text-sm text-stone-500">
+                      <p className="text-sm text-muted">
                         {compactDate(match.playedAt)}
                         {match.challenge ? " · linked challenge" : ""}
                       </p>
                     </div>
                     <form action={adminDeleteMatch}>
                       <input type="hidden" name="matchId" value={match.id} />
-                      <button className="button-secondary" type="submit">
+                      <button className="button-danger" type="submit">
                         Delete
                       </button>
                     </form>
@@ -178,13 +178,13 @@ export default async function AdminPage() {
                         {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
                         {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                       </p>
-                      <p className="mt-1 text-sm text-stone-500">{compactDate(challenge.createdAt)}</p>
+                      <p className="mt-1 text-sm text-muted">{compactDate(challenge.createdAt)}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={challenge.status} />
                       <form action={adminDeleteChallenge}>
                         <input type="hidden" name="challengeId" value={challenge.id} />
-                        <button className="button-secondary" type="submit">
+                        <button className="button-danger" type="submit">
                           Delete
                         </button>
                       </form>

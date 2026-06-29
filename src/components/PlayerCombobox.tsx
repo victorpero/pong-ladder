@@ -49,7 +49,7 @@ export function PlayerCombobox({
           </option>
         ))}
       </datalist>
-      <span className="text-xs text-stone-500">Choose a player from the suggestions.</span>
+      <span className="text-xs text-muted">Choose a player from the suggestions.</span>
     </label>
   );
 }

@@ -52,7 +52,7 @@ export function AdminNavButton() {
       href="/admin"
       aria-label="Admin"
       title="Admin"
-      className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-stone-700 transition hover:border-court-500 hover:text-court-700"
+      className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink transition hover:border-court-500 hover:text-court-700"
     >
       <Wrench aria-hidden="true" size={18} strokeWidth={2.2} />
     </Link>

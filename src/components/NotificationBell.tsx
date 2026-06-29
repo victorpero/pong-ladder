@@ -113,11 +113,11 @@ export function NotificationBell() {
             void loadNotifications();
           }
         }}
-        className="relative grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-stone-700 transition hover:border-court-500 hover:text-court-700"
+        className="relative grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink transition hover:border-court-500 hover:text-court-700"
       >
         <Bell aria-hidden="true" size={18} strokeWidth={2.2} />
         {count > 0 ? (
-          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[11px] font-black leading-none text-white">
+          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-court-500 px-1.5 text-[11px] font-black leading-none text-white">
             {count > 9 ? "9+" : count}
           </span>
         ) : null}
@@ -125,9 +125,9 @@ export function NotificationBell() {
 
       {isOpen ? (
         <div className="absolute right-0 top-12 z-50 w-72 rounded-lg border border-line bg-white p-2 shadow-soft">
-          <p className="px-3 py-2 text-xs font-black uppercase tracking-wide text-stone-500">Notifications</p>
+          <p className="px-3 py-2 text-xs font-black uppercase tracking-wide text-muted">Notifications</p>
           {notifications.challenges.length === 0 ? (
-            <p className="rounded-md px-3 py-4 text-sm font-semibold text-stone-500">No notifications</p>
+            <p className="rounded-md px-3 py-4 text-sm font-semibold text-muted">No notifications</p>
           ) : (
             <div className="grid gap-1">
               {notifications.challenges.map((challenge) => (
@@ -135,11 +135,11 @@ export function NotificationBell() {
                   key={challenge.id}
                   href={`/challenges#${challenge.id}`}
                   onClick={() => setIsOpen(false)}
-                  className="rounded-md px-3 py-2 text-sm transition hover:bg-stone-50"
+                  className="rounded-md px-3 py-2 text-sm transition hover:bg-slate-50"
                 >
-                  <span className="font-black text-stone-900">{challenge.challengerName}</span>{" "}
-                  <span className="font-bold text-stone-500">challenges</span>{" "}
-                  <span className="font-black text-stone-900">you</span>
+                  <span className="font-black text-ink">{challenge.challengerName}</span>{" "}
+                  <span className="font-bold text-muted">challenges</span>{" "}
+                  <span className="font-black text-ink">you</span>
                 </Link>
               ))}
             </div>

@@ -13,10 +13,8 @@
 body {
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(20, 184, 166, 0.18), transparent 34rem),
-    linear-gradient(180deg, #f7fbf9 0%, #eef5f2 100%);
-  color: #17211f;
+  background: #f8fafc;
+  color: #111827;
 }
 
 a {
@@ -36,7 +34,7 @@ select {
   }
 
   .section-band {
-    @apply rounded-lg border border-line bg-white/85 p-4 shadow-soft backdrop-blur sm:p-6;
+    @apply rounded-lg border border-line bg-white p-4 shadow-soft sm:p-6;
   }
 
   .field {
@@ -44,19 +42,23 @@ select {
   }
 
   .label {
-    @apply text-xs font-semibold uppercase tracking-normal text-stone-500;
+    @apply text-xs font-semibold uppercase tracking-normal text-muted;
   }
 
   .button {
-    @apply inline-flex min-h-10 items-center justify-center rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-900 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center rounded-md bg-court-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-700 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .button-secondary {
-    @apply inline-flex min-h-10 items-center justify-center rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:border-court-500 hover:text-court-700;
+    @apply inline-flex min-h-10 items-center justify-center rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .button-danger {
+    @apply inline-flex min-h-10 items-center justify-center rounded-md bg-court-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-700 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .stat-label {
-    @apply text-xs font-semibold uppercase tracking-normal text-stone-500;
+    @apply text-xs font-semibold uppercase tracking-normal text-muted;
   }
 }
 
@@ -74,4 +76,3 @@ select {
 .rank-in {
   animation: rank-in 260ms ease-out both;
 }
-

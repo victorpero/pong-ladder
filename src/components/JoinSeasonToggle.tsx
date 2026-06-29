@@ -48,7 +48,7 @@ function JoinSeasonCheckbox({
       />
       <span>
         <span className="block text-sm font-black">Joined current season</span>
-        <span className="mt-1 block text-xs leading-5 text-stone-500">
+        <span className="mt-1 block text-xs leading-5 text-muted">
           {joined
             ? "You are visible on the ladder and available in match and challenge player lists."
             : "Check this to join the active season and become available for matches and challenges."}

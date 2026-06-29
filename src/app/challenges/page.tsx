@@ -88,10 +88,10 @@ export default async function ChallengesPage() {
                         ) : null}
                         <p className={needsResponse ? "text-xl font-black" : "text-lg font-black"}>
                           {publicNames.get(challenge.challengerId) ?? challenge.challenger.username}{" "}
-                          <span className="font-bold text-stone-500">challenges</span>{" "}
+                          <span className="font-bold text-muted">challenges</span>{" "}
                           {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                         </p>
-                        <p className="text-sm text-stone-500">
+                        <p className="text-sm text-muted">
                           {compactDate(challenge.createdAt)} · declines: {challenge.declinedCount}
                         </p>
                       </div>
@@ -108,7 +108,7 @@ export default async function ChallengesPage() {
                         </form>
                         <form action={declineChallenge}>
                           <input type="hidden" name="challengeId" value={challenge.id} />
-                          <button className="button-secondary" type="submit">
+                          <button className="button-danger" type="submit">
                             Decline
                           </button>
                         </form>
@@ -124,9 +124,9 @@ export default async function ChallengesPage() {
         <aside className="section-band self-start">
           <h2 className="text-xl font-black">Create challenge</h2>
           {!session ? (
-            <p className="mt-3 text-sm text-stone-600">Log in before creating challenges.</p>
+            <p className="mt-3 text-sm text-muted">Log in before creating challenges.</p>
           ) : !season || !currentPlayer ? (
-            <p className="mt-3 text-sm text-stone-600">Join the active season before creating challenges.</p>
+            <p className="mt-3 text-sm text-muted">Join the active season before creating challenges.</p>
           ) : (
             <form action={createChallenge} className="mt-4 grid gap-3">
               <input type="hidden" name="seasonId" value={season.id} />

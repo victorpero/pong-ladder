@@ -15,18 +15,11 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
   const nextPath = getSafeNextPath(searchParams.next);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.24),transparent_28rem),linear-gradient(140deg,#f7fbf9_0%,#e8f4ef_52%,#f8faf7_100%)] px-4 py-8 sm:px-6">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col justify-center gap-8 lg:grid lg:grid-cols-[1fr_420px] lg:items-center">
-        <section className="max-w-2xl">
+        <section className="flex min-h-[20rem] flex-col items-center justify-center gap-3 text-center sm:flex-row sm:gap-4 sm:text-left">
           <LogoMark size="large" />
-          <p className="label mt-8">Pong Ladder</p>
-          <h1 className="mt-2 text-4xl font-black leading-tight text-ink sm:text-5xl">
-            Sign in before entering the ladder.
-          </h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-stone-600">
-            Player accounts are protected with hashed passwords and signed HTTP-only session cookies. The screen is built
-            as an isolated auth surface so the visual style can grow into a richer mobile app experience later.
-          </p>
+          <h1 className="text-5xl font-black leading-none text-ink sm:text-6xl">Pong Ladder</h1>
         </section>
 
         <AuthForms nextPath={nextPath} />

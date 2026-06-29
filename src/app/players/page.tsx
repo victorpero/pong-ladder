@@ -35,7 +35,7 @@ export default async function PlayersPage() {
                 >
                   <div>
                     <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
-                    <p className="text-sm text-stone-500">{getTeamDisplayName(user)}</p>
+                    <p className="text-sm text-muted">{getTeamDisplayName(user)}</p>
                   </div>
                   <div>
                     <p className="stat-label">Rank</p>

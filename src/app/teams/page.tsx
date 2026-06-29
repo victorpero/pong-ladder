@@ -59,7 +59,7 @@ export default async function TeamsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-lg font-black">{team.name}</p>
-                        <p className="text-sm text-stone-500">
+                        <p className="text-sm text-muted">
                           {team.members.length} member{team.members.length === 1 ? "" : "s"}
                         </p>
                       </div>
@@ -79,7 +79,7 @@ export default async function TeamsPage() {
                         {isEmptyTeam ? (
                           <form action={deleteTeam}>
                             <input type="hidden" name="teamId" value={team.id} />
-                            <button className="button-secondary" type="submit">
+                            <button className="button-danger" type="submit">
                               Delete
                             </button>
                           </form>
@@ -89,12 +89,12 @@ export default async function TeamsPage() {
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       {team.members.length === 0 ? (
-                        <span className="text-sm text-stone-500">No members yet</span>
+                        <span className="text-sm text-muted">No members yet</span>
                       ) : (
                         team.members.map((member) => (
                           <span
                             key={member.id}
-                            className="rounded-md border border-line bg-stone-50 px-2.5 py-1 text-sm font-semibold text-stone-700"
+                            className="rounded-md border border-line bg-slate-50 px-2.5 py-1 text-sm font-semibold text-neutral"
                           >
                             {publicNames.get(member.id) ?? member.username}
                           </span>
@@ -115,13 +115,13 @@ export default async function TeamsPage() {
               <>
                 <p className="mt-3 text-lg font-black">{currentUser.team.name}</p>
                 <form action={leaveTeam} className="mt-4">
-                  <button className="button-secondary" type="submit">
+                  <button className="button-danger" type="submit">
                     Leave team
                   </button>
                 </form>
               </>
             ) : (
-              <p className="mt-3 text-sm text-stone-600">You are not on a team yet.</p>
+              <p className="mt-3 text-sm text-muted">You are not on a team yet.</p>
             )}
           </section>
 

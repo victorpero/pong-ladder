@@ -36,10 +36,10 @@ export default async function LadderPage() {
         <div className="section-band">
           <p className="label">Active season</p>
           <h1 className="mt-2 text-3xl font-black sm:text-4xl">Season {seasonLabel}</h1>
-          <p className="mt-2 text-sm font-semibold text-stone-500">
+          <p className="mt-2 text-sm font-semibold text-muted">
             {formatDate(season.startsAt)} to {formatDate(season.endsAt ?? season.startsAt)}
           </p>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
             Challenge players above you, register best-of-five results, and climb the season points ladder.
           </p>
         </div>
@@ -73,21 +73,21 @@ export default async function LadderPage() {
               <Link
                 href={`/players/${entry.userId}`}
                 key={entry.id}
-                className="rank-in grid gap-3 rounded-lg border border-line bg-white p-4 transition hover:-translate-y-0.5 hover:border-court-500 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px]"
+                className={`rank-in grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(entry.currentRank).row}`}
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
                   <p className="stat-label">Rank</p>
-                  <p className="text-3xl font-black text-court-700">#{entry.currentRank}</p>
+                  <RankBadge rank={entry.currentRank} />
                 </div>
                 <div>
                   <p className="text-lg font-black">{publicNames.get(entry.userId) ?? entry.user.username}</p>
-                  <p className="text-sm text-stone-500">{getTeamDisplayName(entry.user)}</p>
+                  <p className="text-sm text-muted">{getTeamDisplayName(entry.user)}</p>
                 </div>
                 <Score label="Points" value={entry.points} strong />
                 <Score label="Played" value={entry.matchesPlayed} />
-                <Score label="Wins" value={entry.wins} />
-                <Score label="Losses" value={entry.losses} />
+                <Score label="Wins" value={entry.wins} tone="success" />
+                <Score label="Losses" value={entry.losses} tone="danger" />
               </Link>
             ))}
           </div>
@@ -112,23 +112,23 @@ export default async function LadderPage() {
             {teamLadder.map((team, index) => (
               <article
                 key={team.id}
-                className="rank-in grid gap-3 rounded-lg border border-line bg-white p-4 sm:grid-cols-[72px_1fr_90px_72px_72px_72px]"
+                className={`rank-in grid gap-3 rounded-lg border p-4 sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(team.currentRank).row}`}
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
                   <p className="stat-label">Rank</p>
-                  <p className="text-3xl font-black text-court-700">#{team.currentRank}</p>
+                  <RankBadge rank={team.currentRank} />
                 </div>
                 <div>
                   <p className="text-lg font-black">{team.name}</p>
-                  <p className="text-sm text-stone-500">
+                  <p className="text-sm text-muted">
                     {team.players} player{team.players === 1 ? "" : "s"}
                   </p>
                 </div>
                 <Score label="Points" value={team.points} strong />
                 <Score label="Played" value={team.matchesPlayed} />
-                <Score label="Wins" value={team.wins} />
-                <Score label="Losses" value={team.losses} />
+                <Score label="Wins" value={team.wins} tone="success" />
+                <Score label="Losses" value={team.losses} tone="danger" />
               </article>
             ))}
           </div>
@@ -138,11 +138,55 @@ export default async function LadderPage() {
   );
 }
 
-function Score({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+function RankBadge({ rank }: { rank: number }) {
+  return <p className={`inline-flex rounded-full px-3 py-1 text-2xl font-black ${getRankStyles(rank).badge}`}>#{rank}</p>;
+}
+
+function getRankStyles(rank: number) {
+  if (rank === 1) {
+    return {
+      row: "border-amber-200 bg-amber-50 hover:border-amber-300",
+      badge: "bg-amber-100 text-amber-800"
+    };
+  }
+
+  if (rank === 2) {
+    return {
+      row: "border-slate-200 bg-slate-50 hover:border-slate-300",
+      badge: "bg-slate-200 text-neutral"
+    };
+  }
+
+  if (rank === 3) {
+    return {
+      row: "border-orange-200 bg-orange-50 hover:border-orange-300",
+      badge: "bg-orange-100 text-orange-800"
+    };
+  }
+
+  return {
+    row: "border-line bg-white hover:border-slate-300",
+    badge: "bg-slate-100 text-neutral"
+  };
+}
+
+function Score({
+  label,
+  value,
+  strong,
+  tone
+}: {
+  label: string;
+  value: number;
+  strong?: boolean;
+  tone?: "success" | "danger" | "neutral";
+}) {
+  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-court-700" : "text-ink";
+
   return (
     <div>
       <p className="stat-label">{label}</p>
-      <p className={strong ? "text-2xl font-black" : "text-xl font-bold"}>{value}</p>
+      <p className={`${strong ? "text-2xl font-black" : "text-xl font-bold"} ${toneClass}`}>{value}</p>
     </div>
   );
 }

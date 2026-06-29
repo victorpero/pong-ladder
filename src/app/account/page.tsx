@@ -70,9 +70,9 @@ export default async function AccountPage() {
         <div className="section-band">
           <p className="label">My account</p>
           <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
-          <p className="mt-2 text-sm text-stone-600">{user.email}</p>
-          <p className="mt-1 text-sm text-stone-500">Full name: {user.fullName}</p>
-          <p className="mt-4 text-sm text-stone-500">Account created {formatDate(user.createdAt)}</p>
+          <p className="mt-2 text-sm text-muted">{user.email}</p>
+          <p className="mt-1 text-sm text-muted">Full name: {user.fullName}</p>
+          <p className="mt-4 text-sm text-muted">Account created {formatDate(user.createdAt)}</p>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Rank" value={entry ? `#${entry.currentRank}` : "N/A"} />
@@ -102,9 +102,9 @@ export default async function AccountPage() {
                         {publicNames.get(won ? match.loserId : match.winnerId) ??
                           (won ? match.loser.username : match.winner.username)}
                       </p>
-                      <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
+                      <p className="text-sm text-muted">{compactDate(match.playedAt)}</p>
                     </div>
-                    <p className="mt-2 text-sm text-stone-600">
+                    <p className="mt-2 text-sm text-muted">
                       {publicNames.get(match.winnerId) ?? match.winner.username} won {match.winnerSets}-{match.loserSets}
                     </p>
                   </article>
@@ -132,7 +132,7 @@ export default async function AccountPage() {
                     </p>
                     <StatusBadge status={challenge.status} />
                   </div>
-                  <p className="mt-2 text-sm text-stone-500">{compactDate(challenge.createdAt)}</p>
+                  <p className="mt-2 text-sm text-muted">{compactDate(challenge.createdAt)}</p>
                 </article>
               ))
             )}

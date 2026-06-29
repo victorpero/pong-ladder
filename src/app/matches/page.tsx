@@ -75,18 +75,18 @@ export default async function MatchesPage({ searchParams }: { searchParams?: { c
                         {publicNames.get(match.winnerId) ?? match.winner.username} {match.winnerSets}-{match.loserSets}{" "}
                         {publicNames.get(match.loserId) ?? match.loser.username}
                       </p>
-                      <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
+                      <p className="text-sm text-muted">{compactDate(match.playedAt)}</p>
                     </div>
-                    <div className="rounded-md bg-court-50 px-3 py-2 text-sm font-bold text-court-900">
+                    <div className="rounded-md bg-green-50 px-3 py-2 text-sm font-bold text-success">
                       +{match.winnerPointsAfter - match.winnerPointsBefore} / +
                       {match.loserPointsAfter - match.loserPointsBefore}
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-2 text-sm text-stone-600 sm:grid-cols-2">
-                    <p>
+                  <div className="mt-3 grid gap-2 text-sm text-muted sm:grid-cols-2">
+                    <p className="font-semibold text-success">
                       Winner: {match.winnerPointsBefore} {"->"} {match.winnerPointsAfter}
                     </p>
-                    <p>
+                    <p className="font-semibold text-court-700">
                       Loser: {match.loserPointsBefore} {"->"} {match.loserPointsAfter}
                     </p>
                   </div>
@@ -101,7 +101,7 @@ export default async function MatchesPage({ searchParams }: { searchParams?: { c
             <h2 className="text-xl font-black">Register match</h2>
             {acceptedChallenges.length === 0 ? (
               <div className="mt-4 rounded-lg border border-line bg-white p-4">
-                <p className="text-sm font-semibold text-stone-600">Challenge another player to register a match</p>
+                <p className="text-sm font-semibold text-muted">Challenge another player to register a match</p>
                 <Link className="button mt-4" href="/challenges">
                   Challenge player
                 </Link>

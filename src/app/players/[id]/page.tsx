@@ -86,7 +86,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         <section className="section-band">
           <p className="label">Player</p>
           <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
-          <p className="mt-1 text-sm text-stone-500">{getTeamDisplayName(user)}</p>
+          <p className="mt-1 text-sm text-muted">{getTeamDisplayName(user)}</p>
 
           <h2 className="mt-8 text-xl font-black">Match history</h2>
           <div className="mt-4 grid gap-3">
@@ -100,9 +100,9 @@ export default async function PlayerPage({ params }: { params: { id: string } })
 	                      {publicNames.get(match.winnerId) ?? match.winner.username} beat{" "}
 	                      {publicNames.get(match.loserId) ?? match.loser.username} {match.winnerSets}-{match.loserSets}
 	                    </p>
-                    <p className="text-sm text-stone-500">{compactDate(match.playedAt)}</p>
+                    <p className="text-sm text-muted">{compactDate(match.playedAt)}</p>
                   </div>
-                  <p className="mt-2 text-sm text-stone-600">
+                  <p className="mt-2 text-sm text-muted">
                     {match.winnerPointsBefore} {"->"} {match.winnerPointsAfter} / {match.loserPointsBefore} {"->"}{" "}
                     {match.loserPointsAfter}
                   </p>
@@ -116,9 +116,9 @@ export default async function PlayerPage({ params }: { params: { id: string } })
           <section className="section-band">
             <h2 className="text-xl font-black">Challenge actions</h2>
             {!session ? (
-              <p className="mt-3 text-sm text-stone-600">Log in before creating challenges.</p>
+              <p className="mt-3 text-sm text-muted">Log in before creating challenges.</p>
             ) : !season || !currentPlayer ? (
-              <p className="mt-3 text-sm text-stone-600">Join the active season before creating challenges.</p>
+              <p className="mt-3 text-sm text-muted">Join the active season before creating challenges.</p>
             ) : (
               <form action={createChallenge} className="mt-4 grid gap-3">
                 <input type="hidden" name="seasonId" value={season.id} />
@@ -144,7 +144,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
             <h2 className="text-xl font-black">Challenge history</h2>
             <div className="mt-4 grid gap-3">
               {challenges.length === 0 ? (
-                <p className="text-sm text-stone-600">No challenge history yet.</p>
+                <p className="text-sm text-muted">No challenge history yet.</p>
               ) : (
                 challenges.map((challenge) => (
                   <div key={challenge.id} className="rounded-lg border border-line bg-white p-3">

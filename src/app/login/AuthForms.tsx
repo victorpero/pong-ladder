@@ -12,11 +12,11 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
   const [createState, createAction] = useFormState(createAccount, initialState);
 
   return (
-    <section className="w-full max-w-md rounded-lg border border-line bg-white/92 p-5 shadow-soft backdrop-blur sm:p-6">
-      <div className="grid grid-cols-2 rounded-md bg-stone-100 p-1">
+    <section className="w-full max-w-md rounded-lg border border-line bg-white p-5 shadow-soft sm:p-6">
+      <div className="grid grid-cols-2 rounded-md bg-slate-100 p-1">
         <button
           className={`rounded px-3 py-2 text-sm font-bold transition ${
-            mode === "login" ? "bg-white text-ink shadow-sm" : "text-stone-600"
+            mode === "login" ? "bg-white text-court-700 shadow-sm" : "text-muted"
           }`}
           type="button"
           onClick={() => setMode("login")}
@@ -25,7 +25,7 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
         </button>
         <button
           className={`rounded px-3 py-2 text-sm font-bold transition ${
-            mode === "create" ? "bg-white text-ink shadow-sm" : "text-stone-600"
+            mode === "create" ? "bg-white text-court-700 shadow-sm" : "text-muted"
           }`}
           type="button"
           onClick={() => setMode("create")}
@@ -45,7 +45,7 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <span className="label">Password</span>
             <input className="field" name="password" type="password" autoComplete="current-password" minLength={8} required />
           </label>
-          {loginState.error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{loginState.error}</p> : null}
+          {loginState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{loginState.error}</p> : null}
           <SubmitButton label="Log in" pendingLabel="Checking..." />
         </form>
       ) : (
@@ -67,16 +67,16 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <span className="label">Password</span>
             <input className="field" name="password" type="password" autoComplete="new-password" minLength={8} required />
           </label>
-          <label className="flex items-start gap-3 rounded-md border border-line bg-stone-50 p-3">
+          <label className="flex items-start gap-3 rounded-md border border-line bg-slate-50 p-3">
             <input className="mt-1 h-4 w-4" name="joinCurrentSeason" type="checkbox" defaultChecked />
             <span>
               <span className="block text-sm font-bold">Join current season</span>
-              <span className="mt-1 block text-xs leading-5 text-stone-500">
+              <span className="mt-1 block text-xs leading-5 text-muted">
                 Join now to appear on the ladder and become available for matches and challenges.
               </span>
             </span>
           </label>
-          {createState.error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{createState.error}</p> : null}
+          {createState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{createState.error}</p> : null}
           <SubmitButton label="Create account" pendingLabel="Creating..." />
         </form>
       )}
