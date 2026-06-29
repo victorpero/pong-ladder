@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { adminDeleteChallenge, adminDeleteMatch, adminRemoveSeasonPlayer } from "@/lib/admin-actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
+import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
@@ -54,6 +55,7 @@ export default async function AdminPage() {
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
     ])
   );
+  const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
 
   return (
     <main className="page-shell">
@@ -61,9 +63,7 @@ export default async function AdminPage() {
         <div className="section-band">
           <p className="label">Admin</p>
           <h1 className="mt-1 text-3xl font-black">Root controls</h1>
-          <p className="mt-2 text-sm text-stone-600">
-            Season {season.seasonNumber}, {season.year}
-          </p>
+          <p className="mt-2 text-sm text-stone-600">Season {seasonLabel}</p>
         </div>
         <AdminStat label="Season players" value={ladder.length} />
         <AdminStat label="Matches" value={matches.length} />

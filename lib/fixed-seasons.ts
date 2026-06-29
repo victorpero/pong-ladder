@@ -1,6 +1,8 @@
 import type { Prisma, Season } from "@prisma/client";
 
-const MONTHS_PER_SEASON = 3;
+const MONTHS_PER_SEASON = 4;
+const SEASONS_PER_YEAR = 12 / MONTHS_PER_SEASON;
+const FIRST_SEASON_YEAR = 2026;
 
 export function getSeasonNumber(date = new Date()) {
   return Math.floor(date.getMonth() / MONTHS_PER_SEASON) + 1;
@@ -24,14 +26,22 @@ export function getSeasonWindowForNumber(year: number, seasonNumber: number) {
 }
 
 export function getSeasonName(year: number, seasonNumber: number) {
-  return `${year} Season ${seasonNumber}`;
+  return `Season ${getSeasonLabel(year, seasonNumber)}`;
+}
+
+export function getSeasonYearNumber(year: number) {
+  return year - FIRST_SEASON_YEAR + 1;
+}
+
+export function getSeasonLabel(year: number, seasonNumber: number) {
+  return `${getSeasonYearNumber(year)}.${seasonNumber}`;
 }
 
 export async function ensureCurrentSeason(tx: Prisma.TransactionClient, date = new Date()) {
   const window = getSeasonWindow(date);
   let currentSeason: Season | null = null;
 
-  for (const seasonNumber of [1, 2, 3, 4]) {
+  for (const seasonNumber of Array.from({ length: SEASONS_PER_YEAR }, (_, index) => index + 1)) {
     const fixedWindow = getSeasonWindowForNumber(window.year, seasonNumber);
     const name = getSeasonName(fixedWindow.year, fixedWindow.seasonNumber);
     const existing = await tx.season.findFirst({

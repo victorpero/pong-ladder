@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { JoinSeasonToggle } from "@/components/JoinSeasonToggle";
 import { StatCard } from "@/components/StatCard";
 import { getPublicPlayerNames } from "@/lib/display-name";
+import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { formatDate } from "@/lib/format";
 import { getActiveSeason, getLadder, getTeamLadder } from "@/lib/queries";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
@@ -27,13 +28,14 @@ export default async function LadderPage() {
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
   const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);
+  const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
 
   return (
     <main className="page-shell">
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <div className="section-band">
           <p className="label">Active season</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Season {season.seasonNumber}</h1>
+          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Season {seasonLabel}</h1>
           <p className="mt-2 text-sm font-semibold text-stone-500">
             {formatDate(season.startsAt)} to {formatDate(season.endsAt ?? season.startsAt)}
           </p>
@@ -96,7 +98,7 @@ export default async function LadderPage() {
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <p className="label">Team ladder</p>
-            <h2 className="mt-1 text-2xl font-black">Season {season.seasonNumber} team standings</h2>
+            <h2 className="mt-1 text-2xl font-black">Season {seasonLabel} team standings</h2>
           </div>
           <Link className="button-secondary" href="/teams">
             Manage teams
