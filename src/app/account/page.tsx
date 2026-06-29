@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { ChangePasswordForm } from "@/app/account/ChangePasswordForm";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
@@ -82,6 +83,14 @@ export default async function AccountPage() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Security</p>
+            <h2 className="mt-1 text-2xl font-black">Change password</h2>
+          </div>
+          <ChangePasswordForm />
+        </section>
+
         <section className="section-band">
           <div className="mb-4">
             <p className="label">Recent matches</p>

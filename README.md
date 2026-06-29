@@ -94,6 +94,8 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 - `DATABASE_URL`: PostgreSQL connection string used by Prisma.
 - `NEXT_PUBLIC_APP_NAME`: Public app name for client-visible configuration.
 - `SESSION_SECRET`: Random server-only secret, at least 32 characters, used to sign HTTP-only session cookies.
+- `SEED_ADMIN_PASSWORD`: Optional password for the seeded admin account. Defaults to `SEED_USER_PASSWORD`.
+- `SEED_USER_PASSWORD`: Optional password for seeded non-admin users. Defaults to `password123`.
 
 ## Project Structure
 

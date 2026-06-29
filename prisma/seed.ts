@@ -14,7 +14,10 @@ async function main() {
   await prisma.team.deleteMany();
 
   const year = new Date().getFullYear();
-  const passwordHash = await bcrypt.hash("password123", 12);
+  const seedUserPassword = process.env.SEED_USER_PASSWORD || "password123";
+  const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD || seedUserPassword;
+  const passwordHash = await bcrypt.hash(seedUserPassword, 12);
+  const adminPasswordHash = await bcrypt.hash(seedAdminPassword, 12);
   const seededTeams = await Promise.all(
     ["Spin Doctors", "Net Gains", "Paddle Force"].map((name) =>
       prisma.team.create({
@@ -40,7 +43,7 @@ async function main() {
           username: "admin",
           fullName: "Pong Ladder Admin",
           email: "admin@pong.local",
-          passwordHash,
+          passwordHash: adminPasswordHash,
           isAdmin: true
         }
       }),

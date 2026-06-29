@@ -2,16 +2,18 @@
 
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
-import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions } from "@/lib/session";
+import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions, verifySessionToken } from "@/lib/session";
 
 export type AuthFormState = {
   error?: string;
+  success?: string;
 };
 
 const loginSchema = z.object({
@@ -25,6 +27,17 @@ const createAccountSchema = z.object({
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string().min(8, "Password must be at least 8 characters.")
 });
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8, "Current password must be at least 8 characters."),
+    newPassword: z.string().min(8, "New password must be at least 8 characters."),
+    confirmPassword: z.string().min(8, "Confirm password must be at least 8 characters.")
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "New passwords do not match.",
+    path: ["confirmPassword"]
+  });
 
 function getValue(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -138,6 +151,49 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
   }
 
   redirect(nextPath);
+}
+
+export async function changePassword(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+
+  if (!session) {
+    redirect("/login?next=/account");
+  }
+
+  try {
+    consumeRateLimit(getClientRateLimitKey("auth:change-password", session.sub), 5, 15 * 60 * 1000);
+
+    const parsed = changePasswordSchema.parse({
+      currentPassword: getValue(formData, "currentPassword"),
+      newPassword: getValue(formData, "newPassword"),
+      confirmPassword: getValue(formData, "confirmPassword")
+    });
+
+    if (parsed.currentPassword === parsed.newPassword) {
+      return { error: "New password must be different from your current password." };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { id: true, passwordHash: true }
+    });
+
+    if (!user || !(await bcrypt.compare(parsed.currentPassword, user.passwordHash))) {
+      return { error: "Current password is incorrect." };
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash }
+    });
+
+    revalidatePath("/account");
+    return { success: "Password updated." };
+  } catch (error) {
+    return authError(error);
+  }
 }
 
 export async function logout() {
