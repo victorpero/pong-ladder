@@ -1,7 +1,7 @@
 import { ChallengeStatus, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { getSeasonName, getSeasonNumber, getSeasonWindowForNumber } from "../lib/fixed-seasons";
-import { calculateMatchScore } from "../lib/scoring";
+import { getSeasonName, getSeasonNumber, getSeasonWindowForNumber } from "../src/lib/fixed-seasons";
+import { calculateMatchScore } from "../src/lib/scoring";
 
 const prisma = new PrismaClient();
 

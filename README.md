@@ -77,7 +77,7 @@ Seed the database:
 npm run prisma:seed
 ```
 
-The seed creates four fixed seasons for the current year, 8 players, teams, completed matches, and pending/completed challenge history.
+The seed creates three fixed four-month seasons for the current year, 8 players, teams, completed matches, and pending/completed challenge history.
 
 ## Tests
 
@@ -87,7 +87,7 @@ Run unit tests:
 npm test
 ```
 
-The scoring rules live in `lib/scoring.ts` and are covered by `tests/scoring.test.ts`.
+The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring.test.ts`.
 
 ## Environment Variables
 
@@ -98,18 +98,18 @@ The scoring rules live in `lib/scoring.ts` and are covered by `tests/scoring.tes
 ## Project Structure
 
 ```text
-app/                 App Router pages, loading, and error UI
-components/          Reusable UI components
 config/              Environment and test runner templates/config
 docker/              Dockerfile and Docker Compose setup
-lib/                 Prisma client, queries, server actions, scoring, ranking helpers
 prisma/              Prisma schema, migrations, and seed data
+src/app/             App Router pages, loading, and error UI
+src/components/      Reusable UI components
+src/lib/             Prisma client, queries, server actions, scoring, ranking helpers
+src/middleware.ts    Route protection middleware
 tests/               Vitest unit tests
 ```
 
 ## Assumptions
 
-- Authentication is intentionally simple for the MVP: users have hashed passwords in the database, but login/session management is left structured for a later hardening pass.
 - Session tokens are signed with `SESSION_SECRET` and stored in HTTP-only cookies. Do not commit real secrets.
-- Match registration is trusted server-side form submission for now. The server validates player IDs, season participation, and valid best-of-five results.
+- Match registration requires an accepted challenge and is limited to admins or match participants.
 - A second decline for the same challenger/challenged pair records a 3-0 forfeit win for the challenger.
