@@ -17,6 +17,7 @@ function value(formData: FormData, key: string) {
 }
 
 function refreshAdmin() {
+  revalidatePath("/", "layout");
   revalidatePath("/admin");
   revalidatePath("/ladder");
   revalidatePath("/players");
@@ -183,14 +184,34 @@ export async function adminDeleteChallenge(formData: FormData) {
   const challengeId = idSchema.parse(value(formData, "challengeId"));
 
   await prisma.$transaction(async (tx) => {
-    await tx.match.updateMany({
-      where: { challengeId },
-      data: { challengeId: null }
+    const challenge = await tx.challenge.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        seasonId: true,
+        match: {
+          select: { id: true }
+        }
+      }
     });
 
-    await tx.challenge.deleteMany({
-      where: { id: challengeId }
+    if (!challenge) {
+      return;
+    }
+
+    if (challenge.match) {
+      await tx.match.delete({
+        where: { id: challenge.match.id }
+      });
+    }
+
+    await tx.challenge.delete({
+      where: { id: challenge.id }
     });
+
+    if (challenge.match) {
+      await rebuildSeasonStandings(tx, challenge.seasonId);
+    }
   });
 
   refreshAdmin();
