@@ -26,6 +26,7 @@ export default async function LadderPage() {
   const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
+  const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);
 
   return (
     <main className="page-shell">
@@ -43,7 +44,7 @@ export default async function LadderPage() {
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Players" value={ladder.length} />
           <StatCard label="Teams" value={teamLadder.length} />
-          <StatCard label="Year" value={season.year} />
+          <StatCard label="Days left" value={`${daysUntilNextSeason} day${daysUntilNextSeason === 1 ? "" : "s"}`} />
         </div>
       </section>
 
@@ -142,4 +143,11 @@ function Score({ label, value, strong }: { label: string; value: number; strong?
       <p className={strong ? "text-2xl font-black" : "text-xl font-bold"}>{value}</p>
     </div>
   );
+}
+
+function getDaysUntilNextSeason(nextSeasonStartsAt: Date) {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  const remainingMilliseconds = nextSeasonStartsAt.getTime() - Date.now();
+
+  return Math.max(0, Math.ceil(remainingMilliseconds / millisecondsPerDay));
 }
