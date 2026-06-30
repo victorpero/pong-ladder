@@ -56,8 +56,8 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <input className="field" name="username" autoComplete="username" minLength={2} required />
           </label>
           <label className="grid gap-1">
-            <span className="label">Full name</span>
-            <input className="field" name="fullName" autoComplete="name" placeholder="Victor Per Olofsson" minLength={2} required />
+            <span className="label">Display name</span>
+            <input className="field" name="fullName" autoComplete="name" placeholder="Victor Olofsson" minLength={2} required />
           </label>
           <label className="grid gap-1">
             <span className="label">Email</span>
