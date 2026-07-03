@@ -3,6 +3,7 @@ import { LogOut, UserCircle } from "lucide-react";
 import { AdminNavButton } from "@/components/AdminNavButton";
 import { LogoMark } from "@/components/LogoMark";
 import { NotificationBell } from "@/components/NotificationBell";
+import { logout } from "@/lib/auth-actions";
 
 const links = [
   ["Ladder", "/ladder"],
@@ -46,14 +47,16 @@ export function NavBar() {
             >
               <UserCircle aria-hidden="true" size={19} strokeWidth={2.2} />
             </Link>
-            <Link
-              href="/logout"
-              aria-label="Log out"
-              title="Log out"
-              className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-neutral transition hover:border-court-200 hover:text-court-700"
-            >
-              <LogOut aria-hidden="true" size={18} strokeWidth={2.2} />
-            </Link>
+            <form action={logout}>
+              <button
+                type="submit"
+                aria-label="Log out"
+                title="Log out"
+                className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-neutral transition hover:border-court-200 hover:text-court-700"
+              >
+                <LogOut aria-hidden="true" size={18} strokeWidth={2.2} />
+              </button>
+            </form>
           </nav>
         </div>
       </div>
