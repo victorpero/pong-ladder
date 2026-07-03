@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const isProduction = process.env.NODE_ENV === "production";
+const enableHttpsHeaders = process.env.APP_ENABLE_HTTPS_HEADERS === "true";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -12,7 +13,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   `script-src 'self' 'unsafe-inline'${isProduction ? "" : " 'unsafe-eval'"}`,
   "connect-src 'self'",
-  isProduction ? "upgrade-insecure-requests" : ""
+  isProduction && enableHttpsHeaders ? "upgrade-insecure-requests" : ""
 ]
   .filter(Boolean)
   .join("; ");
@@ -38,7 +39,7 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()"
   },
-  ...(isProduction
+  ...(isProduction && enableHttpsHeaders
     ? [
         {
           key: "Strict-Transport-Security",
