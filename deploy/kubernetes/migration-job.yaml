@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pong-ladder-migrate
+  namespace: pingpong
+  labels:
+    app.kubernetes.io/name: pong-ladder
+    app.kubernetes.io/component: migration
+    app.kubernetes.io/part-of: pong-ladder
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pong-ladder
+        app.kubernetes.io/component: migration
+        app.kubernetes.io/part-of: pong-ladder
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/victorpero/pong-ladder:0.1.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: DATABASE_URL
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SESSION_SECRET
+          command:
+            - npx
+            - prisma
+            - migrate
+            - deploy

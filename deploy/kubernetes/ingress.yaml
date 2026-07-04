@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pong-ladder
+  namespace: pingpong
+  labels:
+    app.kubernetes.io/name: pong-ladder
+    app.kubernetes.io/part-of: pong-ladder
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - pong-ladder.home.arpa
+      secretName: pong-ladder-home-arpa-tls
+  rules:
+    - host: pong-ladder.home.arpa
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pong-ladder
+                port:
+                  number: 3000
