@@ -301,6 +301,50 @@ kubectl delete job pong-ladder-migrate -n pingpong
 
 `deploy/kubernetes/migration-job.yaml` is not included in `kustomization.yaml`, so it only runs when you apply it directly.
 
+Migrations do not create an admin user. To promote an existing user without seeding demo data, run a one-off Prisma update from the app pod:
+
+```bash
+ADMIN_IDENTIFIER='victorpero'
+POD="$(kubectl get pod -n pingpong -l app.kubernetes.io/name=pong-ladder -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl exec -n pingpong "$POD" -c pong-ladder -- env ADMIN_IDENTIFIER="$ADMIN_IDENTIFIER" node -e '
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+async function main() {
+  const identifier = process.env.ADMIN_IDENTIFIER;
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ username: identifier }, { email: identifier.toLowerCase() }]
+    },
+    select: { id: true, username: true, email: true }
+  });
+
+  if (!user) {
+    throw new Error(`No user found for ${identifier}.`);
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { isAdmin: true },
+    select: { username: true, email: true, isAdmin: true }
+  });
+
+  console.log(JSON.stringify(updated, null, 2));
+}
+
+main()
+  .then(async () => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
+'
+```
+
+The user may need to log out and back in before the admin UI appears.
+
 ### Verify
 
 Check Kubernetes objects and logs:
@@ -376,6 +420,8 @@ npm run prisma:seed
 ```
 
 The seed creates three fixed four-month seasons for the current year, 8 players, teams, completed matches, and pending/completed challenge history.
+
+Do not run the seed script against a production or homelab database you want to keep. It deletes existing matches, challenges, seasons, users, and teams before inserting demo data.
 
 ## Tests
 
