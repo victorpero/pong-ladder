@@ -1,8 +1,16 @@
 import { cookies } from "next/headers";
+import { ChallengeStatus } from "@prisma/client";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
-import { adminDeleteChallenge, adminDeleteMatch, adminRemoveSeasonPlayer } from "@/lib/admin-actions";
+import {
+  adminCancelOpenChallengesForPlayer,
+  adminDeleteChallenge,
+  adminDeleteMatch,
+  adminDeletePlayer,
+  adminRemoveSeasonPlayer
+} from "@/lib/admin-actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
@@ -30,7 +38,7 @@ export default async function AdminPage() {
   }
 
   const season = await getActiveSeason();
-  const [ladder, users, matches, challenges] = await Promise.all([
+  const [ladder, users, matches, challenges, openChallenges] = await Promise.all([
     getLadder(season.id),
     prisma.user.findMany({
       include: { team: true },
@@ -45,8 +53,16 @@ export default async function AdminPage() {
       where: { seasonId: season.id },
       include: { challenger: true, challenged: true, match: true },
       orderBy: { createdAt: "desc" }
+    }),
+    prisma.challenge.findMany({
+      where: {
+        status: { in: [ChallengeStatus.Pending, ChallengeStatus.Accepted] },
+        match: null
+      },
+      select: { challengerId: true, challengedId: true }
     })
   ]);
+  const openChallengeCounts = getChallengeCounts(openChallenges);
   const publicNames = getPublicPlayerNames(
     uniqueUsers([
       ...users,
@@ -92,9 +108,12 @@ export default async function AdminPage() {
                     </div>
                     <form action={adminRemoveSeasonPlayer}>
                       <input type="hidden" name="seasonPlayerId" value={entry.id} />
-                      <button className="button-danger" type="submit">
+                      <ConfirmSubmitButton
+                        className="button-danger"
+                        confirmation="This will remove the player from this season and delete their season matches and challenges."
+                      >
                         Remove
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   </div>
                 </article>
@@ -109,20 +128,47 @@ export default async function AdminPage() {
             <h2 className="mt-1 text-2xl font-black">All players</h2>
           </div>
           <div className="grid gap-3">
-            {users.map((user) => (
-              <article key={user.id} className="rounded-lg border border-line bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
-                    <p className="text-sm text-muted">
-                      {getTeamDisplayName(user)}
-                      {user.isAdmin ? " · admin" : ""}
-                    </p>
+            {users.map((user) => {
+              const openChallengeCount = openChallengeCounts.get(user.id) ?? 0;
+
+              return (
+                <article key={user.id} className="rounded-lg border border-line bg-white p-4">
+                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+                    <div>
+                      <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
+                      <p className="text-sm text-muted">
+                        {getTeamDisplayName(user)}
+                        {user.isAdmin ? " · admin" : ""}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        {user.username} · {openChallengeCount} open challenge{openChallengeCount === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <form action={adminCancelOpenChallengesForPlayer}>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <ConfirmSubmitButton
+                          className="button-secondary"
+                          confirmation="This will remove all pending or accepted challenges involving this player."
+                          disabled={openChallengeCount === 0}
+                        >
+                          Cancel open challenges
+                        </ConfirmSubmitButton>
+                      </form>
+                      <form action={adminDeletePlayer}>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <ConfirmSubmitButton
+                          className="button-danger"
+                          confirmation="This will permanently delete the player from the database. Related season memberships, rankings, matches, and challenges will be removed."
+                        >
+                          Delete player
+                        </ConfirmSubmitButton>
+                      </form>
+                    </div>
                   </div>
-                  <p className="text-sm font-semibold text-muted">{user.username}</p>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -150,9 +196,9 @@ export default async function AdminPage() {
                     </div>
                     <form action={adminDeleteMatch}>
                       <input type="hidden" name="matchId" value={match.id} />
-                      <button className="button-danger" type="submit">
+                      <ConfirmSubmitButton className="button-danger" confirmation="This will delete this match result.">
                         Delete
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   </div>
                 </article>
@@ -184,9 +230,12 @@ export default async function AdminPage() {
                       <StatusBadge status={challenge.status} />
                       <form action={adminDeleteChallenge}>
                         <input type="hidden" name="challengeId" value={challenge.id} />
-                        <button className="button-danger" type="submit">
+                        <ConfirmSubmitButton
+                          className="button-danger"
+                          confirmation="This will delete this challenge. If it has a linked match, that match result will also be deleted."
+                        >
                           Delete
-                        </button>
+                        </ConfirmSubmitButton>
                       </form>
                     </div>
                   </div>
@@ -211,4 +260,15 @@ function AdminStat({ label, value }: { label: string; value: number }) {
 
 function uniqueUsers<T extends { id: string }>(users: T[]) {
   return Array.from(new Map(users.map((user) => [user.id, user])).values());
+}
+
+function getChallengeCounts(challenges: Array<{ challengerId: string; challengedId: string }>) {
+  const counts = new Map<string, number>();
+
+  for (const challenge of challenges) {
+    counts.set(challenge.challengerId, (counts.get(challenge.challengerId) ?? 0) + 1);
+    counts.set(challenge.challengedId, (counts.get(challenge.challengedId) ?? 0) + 1);
+  }
+
+  return counts;
 }

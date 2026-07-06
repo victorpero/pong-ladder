@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere, uniqueSeasonIds } from "@/lib/admin-cleanup";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
@@ -124,14 +125,14 @@ export async function adminRemoveSeasonPlayer(formData: FormData) {
     await tx.match.deleteMany({
       where: {
         seasonId: seasonPlayer.seasonId,
-        OR: [{ winnerId: seasonPlayer.userId }, { loserId: seasonPlayer.userId }]
+        ...playerMatchWhere(seasonPlayer.userId)
       }
     });
 
     await tx.challenge.deleteMany({
       where: {
         seasonId: seasonPlayer.seasonId,
-        OR: [{ challengerId: seasonPlayer.userId }, { challengedId: seasonPlayer.userId }]
+        ...playerChallengeWhere(seasonPlayer.userId)
       }
     });
 
@@ -140,6 +141,78 @@ export async function adminRemoveSeasonPlayer(formData: FormData) {
     });
 
     await rebuildSeasonStandings(tx, seasonPlayer.seasonId);
+  });
+
+  refreshAdmin();
+}
+
+export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
+  await requireAdmin();
+  const userId = idSchema.parse(value(formData, "userId"));
+
+  await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return;
+    }
+
+    await tx.challenge.deleteMany({
+      where: openPlayerChallengeWhere(user.id)
+    });
+  });
+
+  refreshAdmin();
+}
+
+export async function adminDeletePlayer(formData: FormData) {
+  await requireAdmin();
+  const userId = idSchema.parse(value(formData, "userId"));
+
+  await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return;
+    }
+
+    const [seasonPlayers, matches] = await Promise.all([
+      tx.seasonPlayer.findMany({
+        where: { userId: user.id },
+        select: { seasonId: true }
+      }),
+      tx.match.findMany({
+        where: playerMatchWhere(user.id),
+        select: { seasonId: true }
+      })
+    ]);
+    const seasonIds = uniqueSeasonIds([...seasonPlayers, ...matches]);
+
+    await tx.match.deleteMany({
+      where: playerMatchWhere(user.id)
+    });
+
+    await tx.challenge.deleteMany({
+      where: playerChallengeWhere(user.id)
+    });
+
+    await tx.seasonPlayer.deleteMany({
+      where: { userId: user.id }
+    });
+
+    await tx.user.delete({
+      where: { id: user.id }
+    });
+
+    for (const seasonId of seasonIds) {
+      await rebuildSeasonStandings(tx, seasonId);
+    }
   });
 
   refreshAdmin();
