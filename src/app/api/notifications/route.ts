@@ -23,6 +23,15 @@ export async function GET() {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 401 });
   }
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: { isAdmin: true, isApproved: true }
+  });
+
+  if (!user?.isApproved && !user?.isAdmin) {
+    return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
+  }
+
   const where = {
     challengedId: session.sub,
     status: ChallengeStatus.Pending

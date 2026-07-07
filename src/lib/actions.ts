@@ -3,16 +3,15 @@
 import { ChallengeStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { z } from "zod";
-import { canChallengePlayer, challengeWindowMessage } from "@/lib/challenge-rules";
+import { requireActiveUser, requireAdminUser } from "@/lib/authz";
+import { canChallengePlayer, challengeWindowMessage, duplicatePendingChallengeMessage } from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
-import { SESSION_COOKIE_NAME, type SessionPayload, verifySessionToken } from "@/lib/session";
+import type { SessionPayload } from "@/lib/session";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -58,16 +57,6 @@ function refreshApp() {
   revalidatePath("/account");
 }
 
-async function requireSession(nextPath: string) {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect(`/login?next=${nextPath}`);
-  }
-
-  return session;
-}
-
 async function getIsAdmin(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -78,12 +67,7 @@ async function getIsAdmin(userId: string) {
 }
 
 async function requireAdmin() {
-  const session = await requireSession("/admin");
-
-  if (!(await getIsAdmin(session.sub))) {
-    throw new Error("Admin access required.");
-  }
-
+  const { session } = await requireAdminUser();
   return session;
 }
 
@@ -104,7 +88,8 @@ export async function createPlayer(formData: FormData) {
       username: parsed.username,
       fullName: parsed.fullName,
       email: parsed.email,
-      passwordHash
+      passwordHash,
+      isApproved: true
     }
   });
 
@@ -117,6 +102,15 @@ export async function joinSeason(formData: FormData) {
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { isApproved: true, isAdmin: true }
+    });
+
+    if (!user?.isApproved && !user?.isAdmin) {
+      throw new Error("Approve the account before joining it to a season.");
+    }
+
     await joinActiveSeasonForUser(tx, userId);
   });
 
@@ -124,7 +118,7 @@ export async function joinSeason(formData: FormData) {
 }
 
 export async function joinCurrentSeason() {
-  const session = await requireSession("/ladder");
+  const { session } = await requireActiveUser("/ladder");
 
   await prisma.$transaction(async (tx) => {
     await joinActiveSeasonForUser(tx, session.sub);
@@ -134,7 +128,7 @@ export async function joinCurrentSeason() {
 }
 
 export async function createTeam(formData: FormData) {
-  const session = await requireSession("/teams");
+  const { session } = await requireActiveUser("/teams");
 
   const parsed = teamSchema.parse({
     name: value(formData, "name")
@@ -163,7 +157,7 @@ export async function createTeam(formData: FormData) {
 }
 
 export async function joinTeam(formData: FormData) {
-  const session = await requireSession("/teams");
+  const { session } = await requireActiveUser("/teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -176,7 +170,7 @@ export async function joinTeam(formData: FormData) {
 }
 
 export async function leaveTeam() {
-  const session = await requireSession("/teams");
+  const { session } = await requireActiveUser("/teams");
 
   await prisma.user.update({
     where: { id: session.sub },
@@ -187,7 +181,7 @@ export async function leaveTeam() {
 }
 
 export async function deleteTeam(formData: FormData) {
-  await requireSession("/teams");
+  await requireActiveUser("/teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -209,7 +203,7 @@ export async function deleteTeam(formData: FormData) {
 }
 
 export async function createChallenge(formData: FormData) {
-  const session = await requireSession("/challenges");
+  const { session } = await requireActiveUser("/challenges");
   consumeRateLimit(getClientRateLimitKey("challenge:create", session.sub), 20, 5 * 60 * 1000);
 
   const seasonId = idSchema.parse(value(formData, "seasonId"));
@@ -220,48 +214,75 @@ export async function createChallenge(formData: FormData) {
     throw new Error("Players cannot challenge themselves.");
   }
 
-  await prisma.$transaction(async (tx) => {
-    const ladder = await tx.seasonPlayer.findMany({
-      where: { seasonId },
-      orderBy: { currentRank: "asc" }
+  try {
+    await prisma.$transaction(async (tx) => {
+      const ladder = await tx.seasonPlayer.findMany({
+        where: {
+          seasonId,
+          user: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          }
+        },
+        orderBy: { currentRank: "asc" }
+      });
+
+      const challenger = ladder.find((player) => player.userId === challengerId);
+      const challenged = ladder.find((player) => player.userId === challengedId);
+
+      if (!challenger || !challenged) {
+        throw new Error("Both players must be joined to the season.");
+      }
+
+      if (!canChallengePlayer(challenger, challenged)) {
+        throw new Error(challengeWindowMessage);
+      }
+
+      const existingPendingChallenge = await tx.challenge.findFirst({
+        where: {
+          seasonId,
+          challengerId,
+          challengedId,
+          status: ChallengeStatus.Pending
+        },
+        select: { id: true }
+      });
+
+      if (existingPendingChallenge) {
+        throw new Error(duplicatePendingChallengeMessage);
+      }
+
+      const priorDeclines = await tx.challenge.count({
+        where: {
+          seasonId,
+          challengerId,
+          challengedId,
+          status: { in: [ChallengeStatus.Declined, ChallengeStatus.Forfeit] }
+        }
+      });
+
+      await tx.challenge.create({
+        data: {
+          seasonId,
+          challengerId,
+          challengedId,
+          declinedCount: priorDeclines,
+          status: ChallengeStatus.Pending
+        }
+      });
     });
-
-    const challenger = ladder.find((player) => player.userId === challengerId);
-    const challenged = ladder.find((player) => player.userId === challengedId);
-
-    if (!challenger || !challenged) {
-      throw new Error("Both players must be joined to the season.");
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error(duplicatePendingChallengeMessage);
     }
 
-    if (!canChallengePlayer(challenger, challenged)) {
-      throw new Error(challengeWindowMessage);
-    }
-
-    const priorDeclines = await tx.challenge.count({
-      where: {
-        seasonId,
-        challengerId,
-        challengedId,
-        status: { in: [ChallengeStatus.Declined, ChallengeStatus.Forfeit] }
-      }
-    });
-
-    await tx.challenge.create({
-      data: {
-        seasonId,
-        challengerId,
-        challengedId,
-        declinedCount: priorDeclines,
-        status: ChallengeStatus.Pending
-      }
-    });
-  });
+    throw error;
+  }
 
   refreshApp();
 }
 
 export async function acceptChallenge(formData: FormData) {
-  const session = await requireSession("/challenges");
+  const { session } = await requireActiveUser("/challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -282,7 +303,7 @@ export async function acceptChallenge(formData: FormData) {
 }
 
 export async function declineChallenge(formData: FormData) {
-  const session = await requireSession("/challenges");
+  const { session } = await requireActiveUser("/challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -347,7 +368,7 @@ export async function declineChallenge(formData: FormData) {
 }
 
 export async function registerMatchResult(formData: FormData) {
-  const session = await requireSession("/matches");
+  const { session } = await requireActiveUser("/matches");
   consumeRateLimit(getClientRateLimitKey("match:register", session.sub), 20, 5 * 60 * 1000);
 
   const parsed = matchSchema.parse({

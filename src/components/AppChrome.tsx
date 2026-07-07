@@ -5,7 +5,7 @@ import { NavBar } from "@/components/NavBar";
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAuthScreen = pathname === "/login";
+  const isAuthScreen = pathname === "/login" || pathname === "/awaiting-approval";
 
   return (
     <>
@@ -14,4 +14,3 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
     </>
   );
 }
-

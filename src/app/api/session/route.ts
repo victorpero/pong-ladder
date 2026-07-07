@@ -23,8 +23,11 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.sub },
-    select: { isAdmin: true }
+    select: { isAdmin: true, isApproved: true }
   });
 
-  return NextResponse.json({ isAdmin: Boolean(user?.isAdmin) });
+  return NextResponse.json({
+    isAdmin: Boolean(user?.isAdmin),
+    isApproved: Boolean(user?.isApproved || user?.isAdmin)
+  });
 }

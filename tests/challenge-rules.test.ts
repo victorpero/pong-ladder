@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canChallengePlayer } from "@/lib/challenge-rules";
+import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
 
 describe("canChallengePlayer", () => {
   it("allows challenging up to 3 positions above", () => {
@@ -20,3 +20,18 @@ describe("canChallengePlayer", () => {
   });
 });
 
+describe("splitPendingChallengeTargets", () => {
+  it("only blocks targets already challenged by the same player while pending", () => {
+    const result = splitPendingChallengeTargets(
+      [
+        { userId: "player-a", currentRank: 1 },
+        { userId: "player-b", currentRank: 2 },
+        { userId: "player-c", currentRank: 3 }
+      ],
+      ["player-b"]
+    );
+
+    expect(result.availableTargets.map((target) => target.userId)).toEqual(["player-a", "player-c"]);
+    expect(result.blockedTargets.map((target) => target.userId)).toEqual(["player-b"]);
+  });
+});

@@ -1,23 +1,18 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ChangePasswordForm } from "@/app/account/ChangePasswordForm";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
+import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate, formatDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/account");
-  }
+  const { session } = await requireActiveUser("/account");
 
   const [user, season] = await Promise.all([
     prisma.user.findUnique({
@@ -38,7 +33,13 @@ export default async function AccountPage() {
         prisma.match.findMany({
           where: {
             seasonId: season.id,
-            OR: [{ winnerId: user.id }, { loserId: user.id }]
+            OR: [{ winnerId: user.id }, { loserId: user.id }],
+            winner: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            },
+            loser: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            }
           },
           include: { winner: true, loser: true },
           orderBy: { playedAt: "desc" },
@@ -47,7 +48,13 @@ export default async function AccountPage() {
         prisma.challenge.findMany({
           where: {
             seasonId: season.id,
-            OR: [{ challengerId: user.id }, { challengedId: user.id }]
+            OR: [{ challengerId: user.id }, { challengedId: user.id }],
+            challenger: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            },
+            challenged: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            }
           },
           include: { challenger: true, challenged: true },
           orderBy: { createdAt: "desc" },

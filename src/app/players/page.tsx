@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
+import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getActiveSeason, getLadder, getUsers } from "@/lib/queries";
 import { getTeamDisplayName } from "@/lib/team-display";
@@ -7,6 +8,7 @@ import { getTeamDisplayName } from "@/lib/team-display";
 export const dynamic = "force-dynamic";
 
 export default async function PlayersPage() {
+  await requireActiveUser("/players");
   const [users, activeSeason] = await Promise.all([
     getUsers(),
     getActiveSeason()

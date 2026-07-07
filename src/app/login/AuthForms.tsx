@@ -67,15 +67,9 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <span className="label">Password</span>
             <input className="field" name="password" type="password" autoComplete="new-password" minLength={8} required />
           </label>
-          <label className="flex items-start gap-3 rounded-md border border-line bg-slate-50 p-3">
-            <input className="mt-1 h-4 w-4" name="joinCurrentSeason" type="checkbox" defaultChecked />
-            <span>
-              <span className="block text-sm font-bold">Join current season</span>
-              <span className="mt-1 block text-xs leading-5 text-muted">
-                Join now to appear on the ladder and become available for matches and challenges.
-              </span>
-            </span>
-          </label>
+          <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
+            New accounts need admin approval before they can join a season or create challenges.
+          </p>
           {createState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{createState.error}</p> : null}
           <SubmitButton label="Create account" pendingLabel="Creating..." />
         </form>

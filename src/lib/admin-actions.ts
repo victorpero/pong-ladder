@@ -26,6 +26,7 @@ function refreshAdmin() {
   revalidatePath("/challenges");
   revalidatePath("/teams");
   revalidatePath("/account");
+  revalidatePath("/awaiting-approval");
 }
 
 async function requireAdmin() {
@@ -106,6 +107,22 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
   );
 
   await recalculateRanks(tx, seasonId);
+}
+
+export async function adminApproveUser(formData: FormData) {
+  await requireAdmin();
+  const userId = idSchema.parse(value(formData, "userId"));
+
+  await prisma.user.updateMany({
+    where: {
+      id: userId,
+      isAdmin: false,
+      isApproved: false
+    },
+    data: { isApproved: true }
+  });
+
+  refreshAdmin();
 }
 
 export async function adminRemoveSeasonPlayer(formData: FormData) {

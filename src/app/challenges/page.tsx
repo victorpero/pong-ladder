@@ -1,25 +1,32 @@
-import { cookies } from "next/headers";
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { acceptChallenge, createChallenge, declineChallenge } from "@/lib/actions";
-import { canChallengePlayer } from "@/lib/challenge-rules";
+import { requireActiveUser } from "@/lib/authz";
+import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChallengesPage() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const { session } = await requireActiveUser("/challenges");
   const season = await getActiveSeason();
   const ladder = season ? await getLadder(season.id) : [];
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const rawChallenges = season
     ? await prisma.challenge.findMany({
-        where: { seasonId: season.id },
+        where: {
+          seasonId: season.id,
+          challenger: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          },
+          challenged: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          }
+        },
         include: { challenger: true, challenged: true, match: true },
         orderBy: { createdAt: "desc" }
       })
@@ -43,7 +50,14 @@ export default async function ChallengesPage() {
   const challengeTargets = currentPlayer
     ? ladder.filter((entry) => entry.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, entry))
     : [];
-  const challengeOptions = challengeTargets.map((entry) => ({
+  const pendingChallengedIds = challenges
+    .filter((challenge) => challenge.challengerId === session.sub && challenge.status === "Pending")
+    .map((challenge) => challenge.challengedId);
+  const { availableTargets: availableChallengeTargets, blockedTargets: blockedPendingTargets } = splitPendingChallengeTargets(
+    challengeTargets,
+    pendingChallengedIds
+  );
+  const challengeOptions = availableChallengeTargets.map((entry) => ({
     id: entry.userId,
     label: `${publicNames.get(entry.userId) ?? entry.user.username} (#${entry.currentRank})`,
     detail: `${entry.points} pts`
@@ -143,6 +157,12 @@ export default async function ChallengesPage() {
               <button className="button" type="submit" disabled={challengeOptions.length === 0}>
                 Create challenge
               </button>
+              {blockedPendingTargets.length > 0 ? (
+                <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
+                  You already have a pending challenge against{" "}
+                  {blockedPendingTargets.map((entry) => publicNames.get(entry.userId) ?? entry.user.username).join(", ")}.
+                </p>
+              ) : null}
             </form>
           )}
         </aside>

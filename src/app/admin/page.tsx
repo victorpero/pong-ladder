@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
+  adminApproveUser,
   adminCancelOpenChallengesForPlayer,
   adminDeleteChallenge,
   adminDeleteMatch,
@@ -38,11 +39,22 @@ export default async function AdminPage() {
   }
 
   const season = await getActiveSeason();
-  const [ladder, users, matches, challenges, openChallenges] = await Promise.all([
+  const [ladder, users, pendingAccounts, matches, challenges, openChallenges] = await Promise.all([
     getLadder(season.id),
     prisma.user.findMany({
+      where: {
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      },
       include: { team: true },
       orderBy: [{ isAdmin: "desc" }, { username: "asc" }]
+    }),
+    prisma.user.findMany({
+      where: {
+        isApproved: false,
+        isAdmin: false
+      },
+      include: { team: true },
+      orderBy: { createdAt: "asc" }
     }),
     prisma.match.findMany({
       where: { seasonId: season.id },
@@ -66,6 +78,7 @@ export default async function AdminPage() {
   const publicNames = getPublicPlayerNames(
     uniqueUsers([
       ...users,
+      ...pendingAccounts,
       ...ladder.map((entry) => entry.user),
       ...matches.flatMap((match) => [match.winner, match.loser]),
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
@@ -75,17 +88,50 @@ export default async function AdminPage() {
 
   return (
     <main className="page-shell">
-      <section className="mb-6 grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr]">
+      <section className="mb-6 grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
         <div className="section-band">
           <p className="label">Admin</p>
           <h1 className="mt-1 text-3xl font-black">Root controls</h1>
           <p className="mt-2 text-sm text-muted">Season {seasonLabel}</p>
         </div>
         <AdminStat label="Season players" value={ladder.length} />
+        <AdminStat label="Pending accounts" value={pendingAccounts.length} />
         <AdminStat label="Matches" value={matches.length} />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Approvals</p>
+            <h2 className="mt-1 text-2xl font-black">Pending accounts</h2>
+          </div>
+          <div className="grid gap-3">
+            {pendingAccounts.length === 0 ? (
+              <EmptyState title="No pending accounts" body="New account requests will appear here for approval." />
+            ) : (
+              pendingAccounts.map((user) => (
+                <article key={user.id} className="rounded-lg border border-line bg-white p-4">
+                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+                    <div>
+                      <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
+                      <p className="text-sm text-muted">{user.email}</p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        {user.username} · requested {compactDate(user.createdAt)}
+                      </p>
+                    </div>
+                    <form action={adminApproveUser}>
+                      <input type="hidden" name="userId" value={user.id} />
+                      <button className="button" type="submit">
+                        Approve
+                      </button>
+                    </form>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
         <section className="section-band">
           <div className="mb-4">
             <p className="label">Season membership</p>

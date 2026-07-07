@@ -1,18 +1,18 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { JoinSeasonToggle } from "@/components/JoinSeasonToggle";
 import { StatCard } from "@/components/StatCard";
+import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { formatDate } from "@/lib/format";
 import { getActiveSeason, getLadder, getTeamLadder } from "@/lib/queries";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
 export default async function LadderPage() {
+  const { session } = await requireActiveUser("/ladder");
   const season = await getActiveSeason();
 
   if (!season) {
@@ -24,7 +24,6 @@ export default async function LadderPage() {
   }
 
   const [ladder, teamLadder] = await Promise.all([getLadder(season.id), getTeamLadder(season.id)]);
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
   const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);

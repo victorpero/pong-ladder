@@ -1,4 +1,8 @@
-export default function RulesPage() {
+import { requireActiveUser } from "@/lib/authz";
+
+export default async function RulesPage() {
+  await requireActiveUser("/rules");
+
   return (
     <main className="page-shell">
       <article className="section-band prose prose-stone max-w-none">

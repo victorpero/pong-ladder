@@ -1,23 +1,30 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { registerMatchResult } from "@/lib/actions";
+import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function MatchesPage({ searchParams }: { searchParams?: { challengeId?: string } }) {
+  const { session } = await requireActiveUser("/matches");
   const season = await getActiveSeason();
   const ladder = season ? await getLadder(season.id) : [];
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
   const matches = season
     ? await prisma.match.findMany({
-        where: { seasonId: season.id },
+        where: {
+          seasonId: season.id,
+          winner: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          },
+          loser: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          }
+        },
         include: { winner: true, loser: true, challenge: true },
         orderBy: { playedAt: "desc" },
         take: 30
@@ -28,7 +35,13 @@ export default async function MatchesPage({ searchParams }: { searchParams?: { c
         where: {
           seasonId: season.id,
           status: "Accepted",
-          OR: [{ challengerId: session.sub }, { challengedId: session.sub }]
+          OR: [{ challengerId: session.sub }, { challengedId: session.sub }],
+          challenger: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          },
+          challenged: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          }
         },
         include: { challenger: true, challenged: true },
         orderBy: { createdAt: "desc" }

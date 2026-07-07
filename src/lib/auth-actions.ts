@@ -6,9 +6,9 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { awaitingApprovalPath } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
-import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions, verifySessionToken } from "@/lib/session";
 
 export type AuthFormState = {
@@ -80,7 +80,7 @@ async function setSession(user: { id: string; username: string; email: string })
 }
 
 export async function login(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  const nextPath = getSafeRedirectPath(formData);
+  let nextPath = getSafeRedirectPath(formData);
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:login"), 30, 5 * 60 * 1000);
@@ -102,6 +102,9 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
     }
 
     await setSession(user);
+    if (!user.isApproved && !user.isAdmin) {
+      nextPath = awaitingApprovalPath;
+    }
   } catch (error) {
     return authError(error);
   }
@@ -110,9 +113,6 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 }
 
 export async function createAccount(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  const nextPath = getSafeRedirectPath(formData);
-  const joinCurrentSeason = formData.get("joinCurrentSeason") === "on";
-
   try {
     consumeRateLimit(getClientRateLimitKey("auth:create-account"), 5, 60 * 60 * 1000);
 
@@ -124,21 +124,14 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
     });
 
     const passwordHash = await bcrypt.hash(parsed.password, 12);
-    const user = await prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
-        data: {
-          username: parsed.username,
-          fullName: parsed.fullName,
-          email: parsed.email.toLowerCase(),
-          passwordHash
-        }
-      });
-
-      if (joinCurrentSeason) {
-        await joinActiveSeasonForUser(tx, createdUser.id);
+    const user = await prisma.user.create({
+      data: {
+        username: parsed.username,
+        fullName: parsed.fullName,
+        email: parsed.email.toLowerCase(),
+        passwordHash,
+        isApproved: false
       }
-
-      return createdUser;
     });
 
     await setSession(user);
@@ -150,7 +143,7 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
     return authError(error);
   }
 
-  redirect(nextPath);
+  redirect(awaitingApprovalPath);
 }
 
 export async function changePassword(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -175,11 +168,15 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
 
     const user = await prisma.user.findUnique({
       where: { id: session.sub },
-      select: { id: true, passwordHash: true }
+      select: { id: true, passwordHash: true, isApproved: true, isAdmin: true }
     });
 
     if (!user || !(await bcrypt.compare(parsed.currentPassword, user.passwordHash))) {
       return { error: "Current password is incorrect." };
+    }
+
+    if (!user.isApproved && !user.isAdmin) {
+      return { error: "Your account is awaiting admin approval." };
     }
 
     const passwordHash = await bcrypt.hash(parsed.newPassword, 12);

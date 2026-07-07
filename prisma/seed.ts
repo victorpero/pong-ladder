@@ -44,7 +44,8 @@ async function main() {
           fullName: "Pong Ladder Admin",
           email: "admin@pong.local",
           passwordHash: adminPasswordHash,
-          isAdmin: true
+          isAdmin: true,
+          isApproved: true
         }
       }),
       ...players.map((player) =>
@@ -54,7 +55,8 @@ async function main() {
             fullName: player.fullName,
             email: `${player.username.toLowerCase()}@pong.local`,
             passwordHash,
-            teamId: player.teamId
+            teamId: player.teamId,
+            isApproved: true
           }
         })
       )

@@ -1,25 +1,30 @@
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { createChallenge } from "@/lib/actions";
-import { canChallengePlayer } from "@/lib/challenge-rules";
+import { requireActiveUser } from "@/lib/authz";
+import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ params }: { params: { id: string } }) {
-  const [user, season, session] = await Promise.all([
-    prisma.user.findUnique({ where: { id: params.id }, include: { team: true } }),
-    getActiveSeason(),
-    verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value)
+  const { session } = await requireActiveUser(`/players/${params.id}`);
+  const [user, season] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: params.id,
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      },
+      include: { team: true }
+    }),
+    getActiveSeason()
   ]);
 
   if (!user) {
@@ -32,13 +37,30 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const challengeTargets = currentPlayer
     ? ladder.filter((item) => item.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, item))
     : [];
+  const pendingOutgoingChallenges =
+    season && currentPlayer
+      ? await prisma.challenge.findMany({
+          where: {
+            seasonId: season.id,
+            challengerId: currentPlayer.userId,
+            status: "Pending"
+          },
+          select: { challengedId: true }
+        })
+      : [];
 
   const [matches, challenges] = season
     ? await Promise.all([
         prisma.match.findMany({
           where: {
             seasonId: season.id,
-            OR: [{ winnerId: user.id }, { loserId: user.id }]
+            OR: [{ winnerId: user.id }, { loserId: user.id }],
+            winner: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            },
+            loser: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            }
           },
           include: { winner: true, loser: true },
           orderBy: { playedAt: "desc" },
@@ -47,7 +69,13 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         prisma.challenge.findMany({
           where: {
             seasonId: season.id,
-            OR: [{ challengerId: user.id }, { challengedId: user.id }]
+            OR: [{ challengerId: user.id }, { challengedId: user.id }],
+            challenger: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            },
+            challenged: {
+              OR: [{ isApproved: true }, { isAdmin: true }]
+            }
           },
           include: { challenger: true, challenged: true },
           orderBy: { createdAt: "desc" },
@@ -67,12 +95,16 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const currentPlayerName = currentPlayer
     ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
     : session?.username ?? "";
-  const challengeOptions = challengeTargets.map((item) => ({
+  const { availableTargets: availableChallengeTargets, blockedTargets: blockedPendingTargets } = splitPendingChallengeTargets(
+    challengeTargets,
+    pendingOutgoingChallenges.map((challenge) => challenge.challengedId)
+  );
+  const challengeOptions = availableChallengeTargets.map((item) => ({
     id: item.userId,
     label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.currentRank})`,
     detail: `${item.points} pts`
   }));
-  const defaultChallengeTargetId = challengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
+  const defaultChallengeTargetId = availableChallengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
 
   return (
     <main className="page-shell">
@@ -136,6 +168,12 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                 <button className="button" type="submit" disabled={challengeOptions.length === 0}>
                   Create challenge
                 </button>
+                {blockedPendingTargets.length > 0 ? (
+                  <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
+                    You already have a pending challenge against{" "}
+                    {blockedPendingTargets.map((item) => publicNames.get(item.userId) ?? item.user.username).join(", ")}.
+                  </p>
+                ) : null}
               </form>
             )}
           </section>

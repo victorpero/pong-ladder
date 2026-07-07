@@ -1,19 +1,14 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { createTeam, deleteTeam, joinTeam, leaveTeam } from "@/lib/actions";
+import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/teams");
-  }
+  const { session } = await requireActiveUser("/teams");
 
   const [currentUser, teams] = await Promise.all([
     prisma.user.findUnique({
@@ -23,6 +18,9 @@ export default async function TeamsPage() {
     prisma.team.findMany({
       include: {
         members: {
+          where: {
+            OR: [{ isApproved: true }, { isAdmin: true }]
+          },
           orderBy: { username: "asc" }
         }
       },
