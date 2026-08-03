@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere, uniqueSeasonIds } from "@/lib/admin-cleanup";
+import { openPlayerChallengeWhere, pendingAccountWhere, playerChallengeWhere, playerMatchWhere, uniqueSeasonIds } from "@/lib/admin-cleanup";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
@@ -120,6 +120,17 @@ export async function adminApproveUser(formData: FormData) {
       isApproved: false
     },
     data: { isApproved: true }
+  });
+
+  refreshAdmin();
+}
+
+export async function adminDeclinePendingUser(formData: FormData) {
+  await requireAdmin();
+  const userId = idSchema.parse(value(formData, "userId"));
+
+  await prisma.user.deleteMany({
+    where: pendingAccountWhere(userId)
   });
 
   refreshAdmin();

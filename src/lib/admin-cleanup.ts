@@ -2,6 +2,14 @@ import { ChallengeStatus, type Prisma } from "@prisma/client";
 
 export const openChallengeStatuses = [ChallengeStatus.Pending, ChallengeStatus.Accepted];
 
+export function pendingAccountWhere(userId: string): Prisma.UserWhereInput {
+  return {
+    id: userId,
+    isAdmin: false,
+    isApproved: false
+  };
+}
+
 export function playerMatchWhere(userId: string): Prisma.MatchWhereInput {
   return {
     OR: [{ winnerId: userId }, { loserId: userId }]

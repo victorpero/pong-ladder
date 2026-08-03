@@ -10,6 +10,7 @@ import {
   adminDeleteChallenge,
   adminDeleteMatch,
   adminDeletePlayer,
+  adminDeclinePendingUser,
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
 import { getPublicPlayerNames } from "@/lib/display-name";
@@ -119,12 +120,23 @@ export default async function AdminPage() {
                         {user.username} · requested {compactDate(user.createdAt)}
                       </p>
                     </div>
-                    <form action={adminApproveUser}>
-                      <input type="hidden" name="userId" value={user.id} />
-                      <button className="button" type="submit">
-                        Approve
-                      </button>
-                    </form>
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <form action={adminApproveUser}>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button className="button" type="submit">
+                          Approve
+                        </button>
+                      </form>
+                      <form action={adminDeclinePendingUser}>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <ConfirmSubmitButton
+                          className="button-danger"
+                          confirmation="This will decline and delete the pending account. The person can submit a new request later."
+                        >
+                          Decline
+                        </ConfirmSubmitButton>
+                      </form>
+                    </div>
                   </div>
                 </article>
               ))
