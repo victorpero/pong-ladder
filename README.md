@@ -12,6 +12,18 @@ Pong Ladder is a table tennis ladder tournament app. Players join fixed quarterl
 - Vitest
 - Docker and Docker Compose
 
+## Delivery flow
+
+`dev` is the integration branch and `main` is production-ready. Create feature
+branches from `dev`, open pull requests into `dev`, verify the integrated
+result, then promote `dev` to `main` through a pull request. Direct pushes to
+`main` are avoided.
+
+GitHub Actions runs linting, type checking, tests, Prisma validation/client
+generation, the production build, and a Docker build for `dev` pushes and pull
+requests targeting `dev` or `main`. A merge to `main` publishes a multi-platform
+GHCR image; Flux promotes its immutable digest to Talos.
+
 ## Local Development
 
 1. Install dependencies:
