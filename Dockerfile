@@ -27,6 +27,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+LABEL org.opencontainers.image.source="https://github.com/victorpero/pong-ladder"
 RUN apk add --no-cache openssl
 COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/public ./public
