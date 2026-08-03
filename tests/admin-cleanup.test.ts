@@ -1,8 +1,22 @@
 import { ChallengeStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { openChallengeStatuses, openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere } from "@/lib/admin-cleanup";
+import {
+  openChallengeStatuses,
+  openPlayerChallengeWhere,
+  pendingAccountWhere,
+  playerChallengeWhere,
+  playerMatchWhere
+} from "@/lib/admin-cleanup";
 
 describe("admin cleanup filters", () => {
+  it("limits declined accounts to non-admin pending users", () => {
+    expect(pendingAccountWhere("player-1")).toEqual({
+      id: "player-1",
+      isAdmin: false,
+      isApproved: false
+    });
+  });
+
   it("matches player references in matches", () => {
     expect(playerMatchWhere("player-1")).toEqual({
       OR: [{ winnerId: "player-1" }, { loserId: "player-1" }]
