@@ -16,6 +16,10 @@ jobs:
   quality:
     name: Quality checks
     runs-on: ubuntu-latest
+    # Prisma needs a syntactically valid URL to load the schema. CI never
+    # connects to this database or uses production credentials.
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/pong_ladder?schema=public
 
     steps:
       - name: Check out repository
