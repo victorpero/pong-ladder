@@ -17,6 +17,14 @@ Talos deployment to the published image digest.
 Configure these rules in GitHub when your plan supports branch protection:
 
 - **main:** require a pull request, require the `Quality checks` status check,
-  require branches to be up to date, and block force pushes and deletion.
+  and block force pushes and deletion.
 - **dev:** require the `Quality checks` status check for pull requests, and
   block force pushes and deletion.
+
+Do not require branches to be up to date on `main`. Promoting `dev` to `main`
+leaves a merge commit that only `main` carries, so the requirement blocks the
+next promotion until `main` is merged back into `dev`. Because `main` only ever
+receives merges from `dev`, and `dev` runs the same checks against the same
+tree, the requirement costs a synchronisation pull request per release without
+adding cover. Squash and rebase promotions have the same problem: both put
+commits on `main` that `dev` does not contain.
