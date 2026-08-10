@@ -5,7 +5,12 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser, requireAdminUser } from "@/lib/authz";
-import { canChallengePlayer, challengeWindowMessage, duplicatePendingChallengeMessage } from "@/lib/challenge-rules";
+import {
+  activeChallengeBetweenWhere,
+  canChallengePlayer,
+  challengeWindowMessage,
+  duplicateActiveChallengeMessage
+} from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
@@ -237,18 +242,13 @@ export async function createChallenge(formData: FormData) {
         throw new Error(challengeWindowMessage);
       }
 
-      const existingPendingChallenge = await tx.challenge.findFirst({
-        where: {
-          seasonId,
-          challengerId,
-          challengedId,
-          status: ChallengeStatus.Pending
-        },
+      const existingActiveChallenge = await tx.challenge.findFirst({
+        where: activeChallengeBetweenWhere(seasonId, challengerId, challengedId),
         select: { id: true }
       });
 
-      if (existingPendingChallenge) {
-        throw new Error(duplicatePendingChallengeMessage);
+      if (existingActiveChallenge) {
+        throw new Error(duplicateActiveChallengeMessage);
       }
 
       const priorDeclines = await tx.challenge.count({
@@ -271,8 +271,10 @@ export async function createChallenge(formData: FormData) {
       });
     });
   } catch (error) {
+    // Two simultaneous requests both pass the lookup above; the unique index on
+    // the active pair rejects whichever insert loses the race.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error(duplicatePendingChallengeMessage);
+      throw new Error(duplicateActiveChallengeMessage);
     }
 
     throw error;

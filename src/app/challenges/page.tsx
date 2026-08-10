@@ -3,7 +3,7 @@ import { PlayerCombobox } from "@/components/PlayerCombobox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { acceptChallenge, createChallenge, declineChallenge } from "@/lib/actions";
 import { requireActiveUser } from "@/lib/authz";
-import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
+import { canChallengePlayer, getActiveChallengeOpponentIds, splitActiveChallengeTargets } from "@/lib/challenge-rules";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -50,12 +50,10 @@ export default async function ChallengesPage() {
   const challengeTargets = currentPlayer
     ? ladder.filter((entry) => entry.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, entry))
     : [];
-  const pendingChallengedIds = challenges
-    .filter((challenge) => challenge.challengerId === session.sub && challenge.status === "Pending")
-    .map((challenge) => challenge.challengedId);
-  const { availableTargets: availableChallengeTargets, blockedTargets: blockedPendingTargets } = splitPendingChallengeTargets(
+  const activeOpponentIds = getActiveChallengeOpponentIds(challenges, session.sub);
+  const { availableTargets: availableChallengeTargets, blockedTargets: blockedActiveTargets } = splitActiveChallengeTargets(
     challengeTargets,
-    pendingChallengedIds
+    activeOpponentIds
   );
   const challengeOptions = availableChallengeTargets.map((entry) => ({
     id: entry.userId,
@@ -157,10 +155,11 @@ export default async function ChallengesPage() {
               <button className="button" type="submit" disabled={challengeOptions.length === 0}>
                 Create challenge
               </button>
-              {blockedPendingTargets.length > 0 ? (
+              {blockedActiveTargets.length > 0 ? (
                 <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-                  You already have a pending challenge against{" "}
-                  {blockedPendingTargets.map((entry) => publicNames.get(entry.userId) ?? entry.user.username).join(", ")}.
+                  You already have an active challenge with{" "}
+                  {blockedActiveTargets.map((entry) => publicNames.get(entry.userId) ?? entry.user.username).join(", ")}.
+                  Finish it before starting another.
                 </p>
               ) : null}
             </form>
