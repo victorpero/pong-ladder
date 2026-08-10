@@ -1,6 +1,6 @@
 # Pong Ladder
 
-Pong Ladder is a table tennis ladder tournament app. Players join fixed quarterly seasons, challenge nearby players above them, register best-of-five match results, and move through player and team ranking ladders.
+Pong Ladder is a table tennis ladder tournament app. Players join fixed quarterly seasons, challenge nearby players above or below them, register best-of-five match results, and move through player and team ranking ladders.
 
 ## Tech Stack
 

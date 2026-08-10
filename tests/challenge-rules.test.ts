@@ -3,20 +3,22 @@ import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challeng
 
 describe("canChallengePlayer", () => {
   it("allows challenging up to 3 positions above", () => {
-    expect(canChallengePlayer({ currentRank: 8, points: 10 }, { currentRank: 5, points: 20 })).toBe(true);
+    expect(canChallengePlayer({ currentRank: 8 }, { currentRank: 7 })).toBe(true);
+    expect(canChallengePlayer({ currentRank: 8 }, { currentRank: 5 })).toBe(true);
   });
 
-  it("rejects challenges more than 3 positions away", () => {
-    expect(canChallengePlayer({ currentRank: 9, points: 10 }, { currentRank: 5, points: 20 })).toBe(false);
+  it("allows challenging up to 3 positions below", () => {
+    expect(canChallengePlayer({ currentRank: 5 }, { currentRank: 6 })).toBe(true);
+    expect(canChallengePlayer({ currentRank: 5 }, { currentRank: 8 })).toBe(true);
   });
 
-  it("rejects non-tied challenges down the ladder", () => {
-    expect(canChallengePlayer({ currentRank: 5, points: 20 }, { currentRank: 8, points: 10 })).toBe(false);
+  it("rejects challenges more than 3 positions away in either direction", () => {
+    expect(canChallengePlayer({ currentRank: 9 }, { currentRank: 5 })).toBe(false);
+    expect(canChallengePlayer({ currentRank: 5 }, { currentRank: 9 })).toBe(false);
   });
 
-  it("allows tied players to challenge each other within 3 positions either way", () => {
-    expect(canChallengePlayer({ currentRank: 8, points: 0 }, { currentRank: 9, points: 0 })).toBe(true);
-    expect(canChallengePlayer({ currentRank: 9, points: 0 }, { currentRank: 8, points: 0 })).toBe(true);
+  it("rejects a player challenging their own ladder position", () => {
+    expect(canChallengePlayer({ currentRank: 4 }, { currentRank: 4 })).toBe(false);
   });
 });
 
