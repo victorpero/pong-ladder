@@ -1,6 +1,8 @@
-import { ChallengeStatus, type Prisma } from "@prisma/client";
+import { type Prisma } from "@prisma/client";
+import { activeChallengeStatuses } from "@/lib/challenge-rules";
 
-export const openChallengeStatuses = [ChallengeStatus.Pending, ChallengeStatus.Accepted];
+/** Same set the challenge rules treat as an ongoing matchup, kept in one place. */
+export const openChallengeStatuses = activeChallengeStatuses;
 
 export function pendingAccountWhere(userId: string): Prisma.UserWhereInput {
   return {

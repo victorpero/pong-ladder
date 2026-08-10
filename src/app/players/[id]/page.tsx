@@ -5,7 +5,12 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { createChallenge } from "@/lib/actions";
 import { requireActiveUser } from "@/lib/authz";
-import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
+import {
+  activeChallengesForPlayerWhere,
+  canChallengePlayer,
+  getActiveChallengeOpponentIds,
+  splitActiveChallengeTargets
+} from "@/lib/challenge-rules";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
@@ -41,15 +46,11 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const challengeTargets = currentPlayer
     ? ladder.filter((item) => item.userId !== currentPlayer.userId && canChallengePlayer(currentPlayer, item))
     : [];
-  const pendingOutgoingChallenges =
+  const activeChallengesForViewer =
     season && currentPlayer
       ? await prisma.challenge.findMany({
-          where: {
-            seasonId: season.id,
-            challengerId: currentPlayer.userId,
-            status: "Pending"
-          },
-          select: { challengedId: true }
+          where: activeChallengesForPlayerWhere(season.id, currentPlayer.userId),
+          select: { challengerId: true, challengedId: true, status: true }
         })
       : [];
 
@@ -92,9 +93,9 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const currentPlayerName = currentPlayer
     ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
     : session?.username ?? "";
-  const { availableTargets: availableChallengeTargets, blockedTargets: blockedPendingTargets } = splitPendingChallengeTargets(
+  const { availableTargets: availableChallengeTargets, blockedTargets: blockedActiveTargets } = splitActiveChallengeTargets(
     challengeTargets,
-    pendingOutgoingChallenges.map((challenge) => challenge.challengedId)
+    currentPlayer ? getActiveChallengeOpponentIds(activeChallengesForViewer, currentPlayer.userId) : []
   );
   const challengeOptions = availableChallengeTargets.map((item) => ({
     id: item.userId,
@@ -176,10 +177,11 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                 <button className="button" type="submit" disabled={challengeOptions.length === 0}>
                   Create challenge
                 </button>
-                {blockedPendingTargets.length > 0 ? (
+                {blockedActiveTargets.length > 0 ? (
                   <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-                    You already have a pending challenge against{" "}
-                    {blockedPendingTargets.map((item) => publicNames.get(item.userId) ?? item.user.username).join(", ")}.
+                    You already have an active challenge with{" "}
+                    {blockedActiveTargets.map((item) => publicNames.get(item.userId) ?? item.user.username).join(", ")}.
+                    Finish it before starting another.
                   </p>
                 ) : null}
               </form>
