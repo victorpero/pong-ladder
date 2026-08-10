@@ -7,9 +7,12 @@ import { createChallenge } from "@/lib/actions";
 import { requireActiveUser } from "@/lib/authz";
 import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challenge-rules";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
+import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
+import { PlayerStats } from "@/components/PlayerStats";
+import { buildHeadToHead, filterSeasonMatches, selectRival, summarizeRecord } from "@/lib/player-stats";
 import { prisma } from "@/lib/prisma";
-import { getActiveSeason, getLadder } from "@/lib/queries";
+import { getActiveSeason, getLadder, getPlayerMatches } from "@/lib/queries";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
@@ -49,23 +52,9 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         })
       : [];
 
-  const [matches, challenges] = season
+  const [allMatches, challenges] = season
     ? await Promise.all([
-        prisma.match.findMany({
-          where: {
-            seasonId: season.id,
-            OR: [{ winnerId: user.id }, { loserId: user.id }],
-            winner: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            },
-            loser: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            }
-          },
-          include: { winner: true, loser: true },
-          orderBy: { playedAt: "desc" },
-          take: 12
-        }),
+        getPlayerMatches(user.id),
         prisma.challenge.findMany({
           where: {
             seasonId: season.id,
@@ -87,10 +76,17 @@ export default async function PlayerPage({ params }: { params: { id: string } })
     uniqueUsers([
       user,
       ...ladder.map((item) => item.user),
-      ...matches.flatMap((match) => [match.winner, match.loser]),
+      ...allMatches.flatMap((match) => [match.winner, match.loser]),
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
     ])
   );
+  const seasonMatches = season ? filterSeasonMatches(allMatches, season.id) : [];
+  const matches = seasonMatches.slice(0, 12);
+  const allTimeRecord = summarizeRecord(allMatches, user.id);
+  const seasonRecord = summarizeRecord(seasonMatches, user.id);
+  const headToHead = buildHeadToHead(allMatches, user.id, publicNames);
+  const rival = selectRival(headToHead);
+  const seasonLabel = season ? getSeasonLabel(season.year, season.seasonNumber) : "";
   const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
   const currentPlayerName = currentPlayer
     ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
@@ -119,6 +115,17 @@ export default async function PlayerPage({ params }: { params: { id: string } })
           <p className="label">Player</p>
           <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
           <p className="mt-1 text-sm text-muted">{getTeamDisplayName(user)}</p>
+
+          <div className="mt-8">
+            <PlayerStats
+              seasonLabel={seasonLabel}
+              seasonRecord={seasonRecord}
+              allTimeRecord={allTimeRecord}
+              headToHead={headToHead}
+              rival={rival}
+              emptyHeadToHeadBody="Head-to-head records appear once this player has played a match."
+            />
+          </div>
 
           <h2 className="mt-8 text-xl font-black">Match history</h2>
           <div className="mt-4 grid gap-3">

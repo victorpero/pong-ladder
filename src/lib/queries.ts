@@ -95,6 +95,27 @@ export async function getTeamLadder(seasonId: string) {
     }));
 }
 
+/**
+ * Every registered match for a player, across all seasons, in one query so the
+ * profile can derive all-time, seasonal and head-to-head statistics without
+ * querying per opponent.
+ */
+export async function getPlayerMatches(userId: string) {
+  return prisma.match.findMany({
+    where: {
+      OR: [{ winnerId: userId }, { loserId: userId }],
+      winner: {
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      },
+      loser: {
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      }
+    },
+    include: { winner: true, loser: true },
+    orderBy: [{ playedAt: "desc" }, { createdAt: "desc" }]
+  });
+}
+
 export async function getUsers() {
   return prisma.user.findMany({
     where: {
