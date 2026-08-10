@@ -8,6 +8,7 @@ import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate, formatDate } from "@/lib/format";
+import { sortByRegistration } from "@/lib/match-feed";
 import { buildHeadToHead, filterSeasonMatches, selectRival, summarizeRecord } from "@/lib/player-stats";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder, getPlayerMatches } from "@/lib/queries";
@@ -60,7 +61,7 @@ export default async function AccountPage() {
     ])
   );
   const seasonMatches = season ? filterSeasonMatches(allMatches, season.id) : [];
-  const matches = seasonMatches.slice(0, 6);
+  const matches = sortByRegistration(seasonMatches).slice(0, 6);
   const allTimeRecord = summarizeRecord(allMatches, user.id);
   const seasonRecord = summarizeRecord(seasonMatches, user.id);
   const headToHead = buildHeadToHead(allMatches, user.id, publicNames);

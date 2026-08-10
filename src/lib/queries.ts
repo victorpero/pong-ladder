@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
+import { matchFeedOrderBy } from "@/lib/match-feed";
 
 export async function getActiveSeason() {
   return prisma.$transaction((tx) => ensureCurrentSeason(tx));
@@ -112,7 +113,7 @@ export async function getPlayerMatches(userId: string) {
       }
     },
     include: { winner: true, loser: true },
-    orderBy: [{ playedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: matchFeedOrderBy
   });
 }
 

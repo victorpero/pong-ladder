@@ -151,6 +151,15 @@ export function selectRival(headToHead: HeadToHeadRecord[]): HeadToHeadRecord | 
   return rival;
 }
 
+/**
+ * Shared entry point for callers that only need the rival, so the ladder tag and
+ * the profile statistics resolve it through the same rules. Opponent names only
+ * label the result; they never influence which opponent is chosen.
+ */
+export function getRival(matches: StatMatch[], playerId: string, opponentNames: Map<string, string> = new Map()) {
+  return selectRival(buildHeadToHead(matches, playerId, opponentNames));
+}
+
 export function formatWinRate(winRate: number) {
   return `${Math.round(winRate * 100)}%`;
 }
