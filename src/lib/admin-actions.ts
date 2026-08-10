@@ -9,9 +9,23 @@ import { openPlayerChallengeWhere, pendingAccountWhere, playerChallengeWhere, pl
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
+import { addPlayerToSeason, alreadyInSeasonMessage } from "@/lib/season-membership";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 const idSchema = z.string().min(1);
+
+const addSeasonPlayerSchema = z.object({
+  seasonId: idSchema,
+  userId: idSchema
+});
+
+export type AdminFormState = {
+  error?: string;
+  success?: string;
+};
+
+/** Rejections the admin can act on, surfaced as form feedback instead of an error page. */
+class AdminActionError extends Error {}
 
 function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -134,6 +148,73 @@ export async function adminDeclinePendingUser(formData: FormData) {
   });
 
   refreshAdmin();
+}
+
+export async function adminAddSeasonPlayer(_state: AdminFormState, formData: FormData): Promise<AdminFormState> {
+  await requireAdmin();
+
+  const parsed = addSeasonPlayerSchema.safeParse({
+    seasonId: value(formData, "seasonId"),
+    userId: value(formData, "userId")
+  });
+
+  if (!parsed.success) {
+    return { error: "Select a player to add to the season." };
+  }
+
+  const { seasonId, userId } = parsed.data;
+
+  try {
+    const { created, user } = await prisma.$transaction(async (tx) => {
+      const season = await tx.season.findUnique({
+        where: { id: seasonId },
+        select: { id: true, isActive: true }
+      });
+
+      if (!season) {
+        throw new AdminActionError("That season no longer exists.");
+      }
+
+      // Past seasons stay untouched so historical standings and match history keep their meaning.
+      if (!season.isActive) {
+        throw new AdminActionError("Players can only be added to the active season.");
+      }
+
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          OR: [{ isApproved: true }, { isAdmin: true }]
+        },
+        select: { id: true, username: true }
+      });
+
+      if (!user) {
+        throw new AdminActionError("Select an approved player.");
+      }
+
+      const { created } = await addPlayerToSeason(tx, season.id, user.id);
+
+      return { created, user };
+    });
+
+    if (!created) {
+      return { error: alreadyInSeasonMessage };
+    }
+
+    refreshAdmin();
+
+    return { success: `${user.username} was added to the season.` };
+  } catch (error) {
+    if (error instanceof AdminActionError) {
+      return { error: error.message };
+    }
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: alreadyInSeasonMessage };
+    }
+
+    throw error;
+  }
 }
 
 export async function adminRemoveSeasonPlayer(formData: FormData) {
