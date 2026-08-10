@@ -77,7 +77,7 @@ export default async function ChallengesPage() {
             {challenges.length === 0 ? (
               <EmptyState
                 title="No challenges yet"
-                body="Create a challenge against a player up to 3 positions above, or against tied players within 3 positions."
+                body="Create a challenge against a player within 3 positions above or below you."
               />
             ) : (
               challenges.map((challenge) => {

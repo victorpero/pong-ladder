@@ -6,7 +6,8 @@ import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { formatDate } from "@/lib/format";
-import { getActiveSeason, getLadder, getTeamLadder } from "@/lib/queries";
+import { getRival } from "@/lib/player-stats";
+import { getActiveSeason, getLadder, getPlayerMatches, getTeamLadder } from "@/lib/queries";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
@@ -23,9 +24,15 @@ export default async function LadderPage() {
     );
   }
 
-  const [ladder, teamLadder] = await Promise.all([getLadder(season.id), getTeamLadder(season.id)]);
+  const [ladder, teamLadder, viewerMatches] = await Promise.all([
+    getLadder(season.id),
+    getTeamLadder(season.id),
+    session ? getPlayerMatches(session.sub) : []
+  ]);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
+  // Contextual to whoever is signed in, so two players see the tag on different rows.
+  const rivalId = session ? getRival(viewerMatches, session.sub)?.opponentId ?? null : null;
   const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);
   const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
 
@@ -80,7 +87,14 @@ export default async function LadderPage() {
                   <RankBadge rank={entry.currentRank} />
                 </div>
                 <div>
-                  <p className="text-lg font-black">{publicNames.get(entry.userId) ?? entry.user.username}</p>
+                  <p className="text-lg font-black">
+                    {publicNames.get(entry.userId) ?? entry.user.username}
+                    {entry.userId === rivalId ? (
+                      <span className="ml-2 rounded-full bg-court-700 px-2 py-0.5 text-xs font-black align-middle text-white">
+                        Rival
+                      </span>
+                    ) : null}
+                  </p>
                   <p className="text-sm text-muted">{getTeamDisplayName(entry.user)}</p>
                 </div>
                 <Score label="Points" value={entry.points} strong />

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
+import { matchFeedOrderBy } from "@/lib/match-feed";
 
 export async function getActiveSeason() {
   return prisma.$transaction((tx) => ensureCurrentSeason(tx));
@@ -93,6 +94,27 @@ export async function getTeamLadder(seasonId: string) {
       ...team,
       currentRank: index + 1
     }));
+}
+
+/**
+ * Every registered match for a player, across all seasons, in one query so the
+ * profile can derive all-time, seasonal and head-to-head statistics without
+ * querying per opponent.
+ */
+export async function getPlayerMatches(userId: string) {
+  return prisma.match.findMany({
+    where: {
+      OR: [{ winnerId: userId }, { loserId: userId }],
+      winner: {
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      },
+      loser: {
+        OR: [{ isApproved: true }, { isAdmin: true }]
+      }
+    },
+    include: { winner: true, loser: true },
+    orderBy: matchFeedOrderBy
+  });
 }
 
 export async function getUsers() {

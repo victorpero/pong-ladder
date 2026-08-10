@@ -12,8 +12,7 @@ export default async function RulesPage() {
         <section className="mt-8 space-y-4 text-neutral">
           <h2 className="text-2xl font-black text-ink">Challenge rules</h2>
           <ul className="list-disc space-y-2 pl-5">
-            <li>A player may only challenge someone who is up to 3 ladder positions above them.</li>
-            <li>Players tied on points may challenge each other when they are within 3 ladder positions.</li>
+            <li>A player may challenge anyone within 3 ladder positions, whether above or below them.</li>
             <li>A player may only decline a challenge once.</li>
             <li>If the same player declines a second challenge, the match is counted as a 3-0 loss for that player.</li>
           </ul>

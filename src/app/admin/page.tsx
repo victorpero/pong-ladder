@@ -13,11 +13,14 @@ import {
   adminDeclinePendingUser,
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
+import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
+import { matchFeedOrderBy } from "@/lib/match-feed";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
+import { selectSeasonJoinCandidates } from "@/lib/season-membership";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { getTeamDisplayName } from "@/lib/team-display";
 
@@ -60,7 +63,7 @@ export default async function AdminPage() {
     prisma.match.findMany({
       where: { seasonId: season.id },
       include: { winner: true, loser: true, challenge: true },
-      orderBy: [{ playedAt: "desc" }, { createdAt: "desc" }]
+      orderBy: matchFeedOrderBy
     }),
     prisma.challenge.findMany({
       where: { seasonId: season.id },
@@ -86,6 +89,14 @@ export default async function AdminPage() {
     ])
   );
   const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
+  const seasonJoinCandidates = selectSeasonJoinCandidates(
+    users,
+    ladder.map((entry) => entry.userId)
+  ).map((user) => ({
+    id: user.id,
+    label: `${publicNames.get(user.id) ?? user.username} (${user.username})`,
+    detail: getTeamDisplayName(user)
+  }));
 
   return (
     <main className="page-shell">
@@ -142,6 +153,21 @@ export default async function AdminPage() {
               ))
             )}
           </div>
+        </section>
+
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Season membership</p>
+            <h2 className="mt-1 text-2xl font-black">Add player to season</h2>
+            <p className="mt-2 text-sm text-muted">
+              Add an approved player to season {seasonLabel}. They start at the bottom of the ladder with 0 points.
+            </p>
+          </div>
+          {seasonJoinCandidates.length === 0 ? (
+            <EmptyState title="Everyone has joined" body="Every approved player is already in the active season." />
+          ) : (
+            <AddSeasonPlayerForm seasonId={season.id} players={seasonJoinCandidates} />
+          )}
         </section>
 
         <section className="section-band">

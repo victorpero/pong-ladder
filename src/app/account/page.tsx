@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { ChangePasswordForm } from "@/app/account/ChangePasswordForm";
 import { EmptyState } from "@/components/EmptyState";
+import { PlayerStats } from "@/components/PlayerStats";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
+import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate, formatDate } from "@/lib/format";
+import { sortByRegistration } from "@/lib/match-feed";
+import { buildHeadToHead, filterSeasonMatches, selectRival, summarizeRecord } from "@/lib/player-stats";
 import { prisma } from "@/lib/prisma";
-import { getActiveSeason, getLadder } from "@/lib/queries";
+import { getActiveSeason, getLadder, getPlayerMatches } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +32,9 @@ export default async function AccountPage() {
   const ladder = season ? await getLadder(season.id) : [];
   const entry = ladder.find((item) => item.userId === user.id);
 
-  const [matches, challenges] = season
+  const [allMatches, challenges] = season
     ? await Promise.all([
-        prisma.match.findMany({
-          where: {
-            seasonId: season.id,
-            OR: [{ winnerId: user.id }, { loserId: user.id }],
-            winner: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            },
-            loser: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            }
-          },
-          include: { winner: true, loser: true },
-          orderBy: { playedAt: "desc" },
-          take: 6
-        }),
+        getPlayerMatches(user.id),
         prisma.challenge.findMany({
           where: {
             seasonId: season.id,
@@ -66,10 +56,17 @@ export default async function AccountPage() {
     uniqueUsers([
       user,
       ...ladder.map((item) => item.user),
-      ...matches.flatMap((match) => [match.winner, match.loser]),
+      ...allMatches.flatMap((match) => [match.winner, match.loser]),
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
     ])
   );
+  const seasonMatches = season ? filterSeasonMatches(allMatches, season.id) : [];
+  const matches = sortByRegistration(seasonMatches).slice(0, 6);
+  const allTimeRecord = summarizeRecord(allMatches, user.id);
+  const seasonRecord = summarizeRecord(seasonMatches, user.id);
+  const headToHead = buildHeadToHead(allMatches, user.id, publicNames);
+  const rival = selectRival(headToHead);
+  const seasonLabel = season ? getSeasonLabel(season.year, season.seasonNumber) : "";
   const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
 
   return (
@@ -86,6 +83,20 @@ export default async function AccountPage() {
           <StatCard label="Rank" value={entry ? `#${entry.currentRank}` : "N/A"} />
           <StatCard label="Points" value={entry?.points ?? 0} />
           <StatCard label="Record" value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
+        </div>
+      </section>
+
+      <section className="section-band mb-6">
+        <p className="label">Statistics</p>
+        <div className="mt-4">
+          <PlayerStats
+            seasonLabel={seasonLabel}
+            seasonRecord={seasonRecord}
+            allTimeRecord={allTimeRecord}
+            headToHead={headToHead}
+            rival={rival}
+            emptyHeadToHeadBody="Head-to-head records appear once your first match is registered."
+          />
         </div>
       </section>
 
