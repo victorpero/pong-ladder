@@ -9,6 +9,7 @@ import { canChallengePlayer, splitPendingChallengeTargets } from "@/lib/challeng
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
+import { sortByRegistration } from "@/lib/match-feed";
 import { PlayerStats } from "@/components/PlayerStats";
 import { buildHeadToHead, filterSeasonMatches, selectRival, summarizeRecord } from "@/lib/player-stats";
 import { prisma } from "@/lib/prisma";
@@ -81,7 +82,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
     ])
   );
   const seasonMatches = season ? filterSeasonMatches(allMatches, season.id) : [];
-  const matches = seasonMatches.slice(0, 12);
+  const matches = sortByRegistration(seasonMatches).slice(0, 12);
   const allTimeRecord = summarizeRecord(allMatches, user.id);
   const seasonRecord = summarizeRecord(seasonMatches, user.id);
   const headToHead = buildHeadToHead(allMatches, user.id, publicNames);

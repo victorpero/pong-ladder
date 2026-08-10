@@ -4,6 +4,7 @@ import {
   filterSeasonMatches,
   formatWinRate,
   getOpponentId,
+  getRival,
   selectRival,
   summarizeRecord,
   type StatMatch
@@ -181,6 +182,41 @@ describe("selectRival", () => {
 
   it("has no rival when the player has no completed matches", () => {
     expect(selectRival(buildHeadToHead([], "me", names))).toBeNull();
+  });
+});
+
+describe("getRival", () => {
+  it("resolves the rival through the same rules as the profile breakdown", () => {
+    const matches = [
+      match({ winnerId: "me", loserId: "peter" }),
+      match({ winnerId: "peter", loserId: "me" }),
+      match({ winnerId: "me", loserId: "anders" })
+    ];
+
+    expect(getRival(matches, "me", names)?.opponentId).toBe("peter");
+    expect(getRival(matches, "me", names)).toEqual(selectRival(buildHeadToHead(matches, "me", names)));
+  });
+
+  it("marks a single opponent, so only one ladder row can carry the tag", () => {
+    const matches = [
+      match({ winnerId: "me", loserId: "peter" }),
+      match({ winnerId: "me", loserId: "anders" }),
+      match({ winnerId: "me", loserId: "kalle" }),
+      match({ winnerId: "kalle", loserId: "me" })
+    ];
+    const rival = getRival(matches, "me", names);
+    const tagged = ["peter", "anders", "kalle"].filter((opponentId) => opponentId === rival?.opponentId);
+
+    expect(tagged).toEqual(["kalle"]);
+  });
+
+  it("has no rival to tag when the viewer has no completed matches", () => {
+    expect(getRival([], "me", names)).toBeNull();
+    expect(getRival([match({ winnerId: "anders", loserId: "peter" })], "me", names)).toBeNull();
+  });
+
+  it("works without opponent names, since the ladder only needs the opponent id", () => {
+    expect(getRival([match({ winnerId: "me", loserId: "peter" })], "me")?.opponentId).toBe("peter");
   });
 });
 

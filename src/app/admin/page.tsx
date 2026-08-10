@@ -17,6 +17,7 @@ import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
+import { matchFeedOrderBy } from "@/lib/match-feed";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 import { selectSeasonJoinCandidates } from "@/lib/season-membership";
@@ -62,7 +63,7 @@ export default async function AdminPage() {
     prisma.match.findMany({
       where: { seasonId: season.id },
       include: { winner: true, loser: true, challenge: true },
-      orderBy: [{ playedAt: "desc" }, { createdAt: "desc" }]
+      orderBy: matchFeedOrderBy
     }),
     prisma.challenge.findMany({
       where: { seasonId: season.id },

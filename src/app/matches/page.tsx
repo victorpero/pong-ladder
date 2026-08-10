@@ -5,6 +5,7 @@ import { registerMatchResult } from "@/lib/actions";
 import { requireActiveUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
+import { matchFeedOrderBy } from "@/lib/match-feed";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 
@@ -26,7 +27,7 @@ export default async function MatchesPage({ searchParams }: { searchParams?: { c
           }
         },
         include: { winner: true, loser: true, challenge: true },
-        orderBy: { playedAt: "desc" },
+        orderBy: matchFeedOrderBy,
         take: 30
       })
     : [];
