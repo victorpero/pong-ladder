@@ -8,6 +8,7 @@ import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { formatDate } from "@/lib/format";
 import { getRival } from "@/lib/player-stats";
 import { getActiveSeason, getLadder, getPlayerMatches, getTeamLadder } from "@/lib/queries";
+import { shouldShowSeasonJoinPrompt } from "@/lib/season-join-prompt";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,11 @@ export default async function LadderPage() {
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
   // Contextual to whoever is signed in, so two players see the tag on different rows.
   const rivalId = session ? getRival(viewerMatches, session.sub)?.opponentId ?? null : null;
+  // Kept in step with the toggle so the wrapper does not leave its margin behind.
+  const showJoinPrompt = shouldShowSeasonJoinPrompt({
+    joined: Boolean(currentPlayer),
+    hasActiveSeason: Boolean(season)
+  });
   const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);
   const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
 
@@ -56,9 +62,11 @@ export default async function LadderPage() {
         </div>
       </section>
 
-      <section className="mb-6">
-        <JoinSeasonToggle joined={Boolean(currentPlayer)} hasActiveSeason={Boolean(season)} />
-      </section>
+      {showJoinPrompt ? (
+        <section className="mb-6">
+          <JoinSeasonToggle joined={Boolean(currentPlayer)} hasActiveSeason={Boolean(season)} />
+        </section>
+      ) : null}
 
       <section className="section-band">
         <div className="mb-4 flex items-end justify-between gap-4">
