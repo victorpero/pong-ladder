@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { logout } from "@/lib/auth-actions";
 import { getSessionUser } from "@/lib/authz";
+import { getDefaultOrganization } from "@/lib/organizations";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +13,13 @@ export default async function AwaitingApprovalPage() {
     redirect("/login?next=/awaiting-approval");
   }
 
-  if (sessionUser.user.isApproved || sessionUser.user.isAdmin) {
+  const organization = await getDefaultOrganization(prisma);
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: sessionUser.user.id, organizationId: organization.id } },
+    select: { status: true }
+  });
+
+  if (membership?.status === "ACTIVE") {
     redirect("/ladder");
   }
 

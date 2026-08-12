@@ -24,21 +24,22 @@ import { getTeamDisplayName } from "@/lib/team-display";
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ params }: { params: { id: string } }) {
-  const { session } = await requireActiveUser(`/players/${params.id}`);
-  const [user, season] = await Promise.all([
+  const { session, organization } = await requireActiveUser(`/players/${params.id}`);
+  const [rawUser, season] = await Promise.all([
     prisma.user.findFirst({
       where: {
         id: params.id,
-        OR: [{ isApproved: true }, { isAdmin: true }]
+        memberships: { some: { organizationId: organization.id, status: "ACTIVE" } }
       },
-      include: { team: true }
+      include: { memberships: { where: { organizationId: organization.id }, include: { team: true } } }
     }),
-    getActiveSeason()
+    getActiveSeason(organization.id)
   ]);
 
-  if (!user) {
+  if (!rawUser) {
     notFound();
   }
+  const user = { ...rawUser, team: rawUser.memberships[0]?.team ?? null };
 
   const ladder = season ? await getLadder(season.id) : [];
   const entry = ladder.find((item) => item.userId === user.id);
@@ -49,24 +50,19 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const activeChallengesForViewer =
     season && currentPlayer
       ? await prisma.challenge.findMany({
-          where: activeChallengesForPlayerWhere(season.id, currentPlayer.userId),
+          where: { organizationId: organization.id, ...activeChallengesForPlayerWhere(season.id, currentPlayer.userId) },
           select: { challengerId: true, challengedId: true, status: true }
         })
       : [];
 
   const [allMatches, challenges] = season
     ? await Promise.all([
-        getPlayerMatches(user.id),
+        getPlayerMatches(user.id, organization.id),
         prisma.challenge.findMany({
           where: {
+            organizationId: organization.id,
             seasonId: season.id,
-            OR: [{ challengerId: user.id }, { challengedId: user.id }],
-            challenger: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            },
-            challenged: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            }
+            OR: [{ challengerId: user.id }, { challengedId: user.id }]
           },
           include: { challenger: true, challenged: true },
           orderBy: { createdAt: "desc" },

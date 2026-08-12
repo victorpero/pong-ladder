@@ -1,9 +1,18 @@
+import { MembershipRole, MembershipStatus } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export const awaitingApprovalPath = "/awaiting-approval";
+
+export class OrganizationAccessError extends Error {
+  constructor(message = "Organization access required.") {
+    super(message);
+    this.name = "OrganizationAccessError";
+  }
+}
 
 export async function getSessionUser() {
   const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
@@ -17,17 +26,49 @@ export async function getSessionUser() {
     select: {
       id: true,
       username: true,
-      email: true,
-      isAdmin: true,
-      isApproved: true
+      email: true
     }
   });
 
-  if (!user) {
-    return null;
+  return user ? { session, user } : null;
+}
+
+export async function requireActiveMembership(userId: string, organizationId: string) {
+  const membership = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: {
+        userId,
+        organizationId
+      }
+    },
+    include: { organization: true }
+  });
+
+  if (!membership || membership.status !== MembershipStatus.ACTIVE) {
+    throw new OrganizationAccessError();
   }
 
-  return { session, user };
+  return membership;
+}
+
+export async function requireOrgAdmin(userId: string, organizationId: string) {
+  const membership = await requireActiveMembership(userId, organizationId);
+
+  if (membership.role !== MembershipRole.OWNER && membership.role !== MembershipRole.ADMIN) {
+    throw new OrganizationAccessError("Organization administrator access required.");
+  }
+
+  return membership;
+}
+
+export async function requireOrgOwner(userId: string, organizationId: string) {
+  const membership = await requireActiveMembership(userId, organizationId);
+
+  if (membership.role !== MembershipRole.OWNER) {
+    throw new OrganizationAccessError("Organization owner access required.");
+  }
+
+  return membership;
 }
 
 export async function requireAuthenticatedUser(nextPath: string) {
@@ -40,22 +81,38 @@ export async function requireAuthenticatedUser(nextPath: string) {
   return sessionUser;
 }
 
-export async function requireActiveUser(nextPath: string) {
+export async function requireActiveUser(nextPath: string, organizationId?: string) {
   const sessionUser = await requireAuthenticatedUser(nextPath);
+  const organization = organizationId
+    ? await prisma.organization.findUnique({ where: { id: organizationId } })
+    : await getDefaultOrganization(prisma);
 
-  if (!sessionUser.user.isApproved && !sessionUser.user.isAdmin) {
-    redirect(awaitingApprovalPath);
+  if (!organization) {
+    throw new OrganizationAccessError();
   }
 
-  return sessionUser;
+  try {
+    const membership = await requireActiveMembership(sessionUser.user.id, organization.id);
+    return { ...sessionUser, organization, membership };
+  } catch (error) {
+    if (error instanceof OrganizationAccessError) {
+      redirect(awaitingApprovalPath);
+    }
+
+    throw error;
+  }
 }
 
-export async function requireAdminUser() {
+export async function requireAdminUser(organizationId?: string) {
   const sessionUser = await requireAuthenticatedUser("/admin");
+  const organization = organizationId
+    ? await prisma.organization.findUnique({ where: { id: organizationId } })
+    : await getDefaultOrganization(prisma);
 
-  if (!sessionUser.user.isAdmin) {
-    throw new Error("Admin access required.");
+  if (!organization) {
+    throw new OrganizationAccessError();
   }
 
-  return sessionUser;
+  const membership = await requireOrgAdmin(sessionUser.user.id, organization.id);
+  return { ...sessionUser, organization, membership };
 }

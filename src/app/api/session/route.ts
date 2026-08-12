@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getDefaultOrganization } from "@/lib/organizations";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
@@ -21,13 +22,14 @@ export async function GET() {
     return NextResponse.json({ isAdmin: false }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { isAdmin: true, isApproved: true }
+  const organization = await getDefaultOrganization(prisma);
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
+    select: { role: true, status: true }
   });
 
   return NextResponse.json({
-    isAdmin: Boolean(user?.isAdmin),
-    isApproved: Boolean(user?.isApproved || user?.isAdmin)
+    isAdmin: membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER"),
+    isApproved: membership?.status === "ACTIVE"
   });
 }

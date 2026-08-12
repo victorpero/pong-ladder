@@ -1,13 +1,14 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { Prisma } from "@prisma/client";
+import { MembershipRole, MembershipStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { awaitingApprovalPath } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { getDefaultOrganization } from "@/lib/organizations";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions, verifySessionToken } from "@/lib/session";
 
@@ -102,7 +103,12 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
     }
 
     await setSession(user);
-    if (!user.isApproved && !user.isAdmin) {
+    const organization = await getDefaultOrganization(prisma);
+    const membership = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId: user.id, organizationId: organization.id } },
+      select: { status: true }
+    });
+    if (membership?.status !== MembershipStatus.ACTIVE) {
       nextPath = awaitingApprovalPath;
     }
   } catch (error) {
@@ -124,14 +130,28 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
     });
 
     const passwordHash = await bcrypt.hash(parsed.password, 12);
-    const user = await prisma.user.create({
-      data: {
-        username: parsed.username,
-        fullName: parsed.fullName,
-        email: parsed.email.toLowerCase(),
-        passwordHash,
-        isApproved: false
-      }
+    const user = await prisma.$transaction(async (tx) => {
+      const organization = await getDefaultOrganization(tx);
+      const createdUser = await tx.user.create({
+        data: {
+          username: parsed.username,
+          fullName: parsed.fullName,
+          email: parsed.email.toLowerCase(),
+          passwordHash,
+          isApproved: false
+        }
+      });
+
+      await tx.membership.create({
+        data: {
+          userId: createdUser.id,
+          organizationId: organization.id,
+          role: MembershipRole.PLAYER,
+          status: MembershipStatus.PENDING
+        }
+      });
+
+      return createdUser;
     });
 
     await setSession(user);
@@ -168,15 +188,11 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
 
     const user = await prisma.user.findUnique({
       where: { id: session.sub },
-      select: { id: true, passwordHash: true, isApproved: true, isAdmin: true }
+      select: { id: true, passwordHash: true }
     });
 
     if (!user || !(await bcrypt.compare(parsed.currentPassword, user.passwordHash))) {
       return { error: "Current password is incorrect." };
-    }
-
-    if (!user.isApproved && !user.isAdmin) {
-      return { error: "Your account is awaiting admin approval." };
     }
 
     const passwordHash = await bcrypt.hash(parsed.newPassword, 12);
