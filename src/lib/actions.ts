@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser, requireAdminUser } from "@/lib/authz";
+import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
   canChallengePlayer,
@@ -90,14 +91,23 @@ export async function createPlayer(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(parsed.password, 12);
 
-  await prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         username: parsed.username,
         fullName: parsed.fullName,
-        email: parsed.email,
-        passwordHash,
+        email: parsed.email.toLowerCase(),
         isApproved: true
+      }
+    });
+
+    await tx.account.create({
+      data: {
+        id: `credential_${user.id}`,
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: passwordHash
       }
     });
 
@@ -109,7 +119,11 @@ export async function createPlayer(formData: FormData) {
         status: MembershipStatus.ACTIVE
       }
     });
+
+    return user;
   });
+
+  await issueEmailVerification(user.id, user.email);
 
   refreshApp();
 }

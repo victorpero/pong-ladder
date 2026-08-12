@@ -1,12 +1,10 @@
 import { ChallengeStatus } from "@prisma/client";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getSessionUser, requireActiveMembership } from "@/lib/authz";
 import { getPublicPlayerName } from "@/lib/display-name";
-import { requireActiveMembership } from "@/lib/authz";
 import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export async function GET() {
   try {
@@ -19,22 +17,22 @@ export async function GET() {
     throw error;
   }
 
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const sessionUser = await getSessionUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 401 });
   }
 
   const organization = await getDefaultOrganization(prisma);
   try {
-    await requireActiveMembership(session.sub, organization.id);
+    await requireActiveMembership(sessionUser.user.id, organization.id);
   } catch {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
   }
 
   const where = {
     organizationId: organization.id,
-    challengedId: session.sub,
+    challengedId: sessionUser.user.id,
     status: ChallengeStatus.Pending
   };
 

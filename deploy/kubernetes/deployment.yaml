@@ -64,6 +64,10 @@ spec:
               value: "3000"
             - name: NEXT_PUBLIC_APP_NAME
               value: Pong Ladder
+            - name: APP_BASE_URL
+              value: https://pong-ladder.home.arpa
+            - name: EMAIL_DELIVERY_MODE
+              value: smtp
             - name: SESSION_COOKIE_SECURE
               value: "true"
             - name: APP_ENABLE_HTTPS_HEADERS
@@ -78,6 +82,60 @@ spec:
                 secretKeyRef:
                   name: pong-ladder-secrets
                   key: SESSION_SECRET
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: BETTER_AUTH_SECRET
+                  optional: true
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: GOOGLE_OAUTH_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: GOOGLE_OAUTH_CLIENT_SECRET
+                  optional: true
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: EMAIL_FROM
+                  optional: true
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SMTP_HOST
+                  optional: true
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SMTP_PORT
+                  optional: true
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SMTP_SECURE
+                  optional: true
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SMTP_USER
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pong-ladder-secrets
+                  key: SMTP_PASSWORD
+                  optional: true
           readinessProbe:
             tcpSocket:
               port: http

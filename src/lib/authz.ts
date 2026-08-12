@@ -1,11 +1,13 @@
 import { MembershipRole, MembershipStatus } from "@prisma/client";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import type { SessionPayload } from "@/lib/session";
 
 export const awaitingApprovalPath = "/awaiting-approval";
+export const verifyEmailPath = "/verify-email";
 
 export class OrganizationAccessError extends Error {
   constructor(message = "Organization access required.") {
@@ -15,22 +17,35 @@ export class OrganizationAccessError extends Error {
 }
 
 export async function getSessionUser() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const authSession = await auth.api.getSession({ headers: await headers() });
 
-  if (!session) {
+  if (!authSession) {
     return null;
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: session.sub },
+    where: { id: authSession.user.id },
     select: {
       id: true,
       username: true,
-      email: true
+      email: true,
+      emailVerifiedAt: true
     }
   });
 
-  return user ? { session, user } : null;
+  if (!user) {
+    return null;
+  }
+
+  const session: SessionPayload = {
+    sub: user.id,
+    username: user.username,
+    email: user.email,
+    iat: Math.floor(authSession.session.createdAt.getTime() / 1000),
+    exp: Math.floor(authSession.session.expiresAt.getTime() / 1000)
+  };
+
+  return { session, user };
 }
 
 export async function requireActiveMembership(userId: string, organizationId: string) {
@@ -41,10 +56,13 @@ export async function requireActiveMembership(userId: string, organizationId: st
         organizationId
       }
     },
-    include: { organization: true }
+    include: {
+      organization: true,
+      user: { select: { emailVerifiedAt: true } }
+    }
   });
 
-  if (!membership || membership.status !== MembershipStatus.ACTIVE) {
+  if (!membership || membership.status !== MembershipStatus.ACTIVE || !membership.user.emailVerifiedAt) {
     throw new OrganizationAccessError();
   }
 
@@ -83,6 +101,11 @@ export async function requireAuthenticatedUser(nextPath: string) {
 
 export async function requireActiveUser(nextPath: string, organizationId?: string) {
   const sessionUser = await requireAuthenticatedUser(nextPath);
+
+  if (!sessionUser.user.emailVerifiedAt) {
+    redirect(`${verifyEmailPath}?next=${encodeURIComponent(nextPath)}`);
+  }
+
   const organization = organizationId
     ? await prisma.organization.findUnique({ where: { id: organizationId } })
     : await getDefaultOrganization(prisma);
@@ -105,6 +128,10 @@ export async function requireActiveUser(nextPath: string, organizationId?: strin
 
 export async function requireAdminUser(organizationId?: string) {
   const sessionUser = await requireAuthenticatedUser("/admin");
+
+  if (!sessionUser.user.emailVerifiedAt) {
+    redirect(`${verifyEmailPath}?next=${encodeURIComponent("/admin")}`);
+  }
   const organization = organizationId
     ? await prisma.organization.findUnique({ where: { id: organizationId } })
     : await getDefaultOrganization(prisma);

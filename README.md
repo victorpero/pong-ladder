@@ -132,7 +132,9 @@ Application details detected from this repository:
 - Container port: `3000`.
 - Database: PostgreSQL via Prisma.
 - Migration command: `npx prisma migrate deploy`.
-- Required runtime secret: `SESSION_SECRET`, at least 32 characters.
+- Required runtime secrets: `SESSION_SECRET` and `BETTER_AUTH_SECRET`, each at least 32 characters. `SESSION_SECRET` remains a temporary fallback during rollout.
+- Required production origin: `APP_BASE_URL`, including the HTTPS scheme and public host.
+- Email verification delivery: SMTP in production; console delivery is available for local development.
 - HTTPS runtime settings: `SESSION_COOKIE_SECURE=true` and `APP_ENABLE_HTTPS_HEADERS=true`.
 
 The Kubernetes manifests live in `deploy/kubernetes/` and create:
@@ -449,9 +451,15 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 
 - `DATABASE_URL`: PostgreSQL connection string used by Prisma.
 - `NEXT_PUBLIC_APP_NAME`: Public app name for client-visible configuration.
-- `SESSION_SECRET`: Random server-only secret, at least 32 characters, used to sign HTTP-only session cookies.
+- `APP_BASE_URL`: Trusted public origin used for authentication callbacks and verification links. Production values must use HTTPS.
+- `BETTER_AUTH_SECRET`: Random server-only secret, at least 32 characters, used for authentication state and session cookies. `SESSION_SECRET` is accepted as a rollout fallback.
+- `SESSION_SECRET`: Legacy server-only secret retained during the session migration.
 - `SESSION_COOKIE_SECURE`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
 - `APP_ENABLE_HTTPS_HEADERS`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
+- `EMAIL_DELIVERY_MODE`: `console` for local development or `smtp` for real delivery. Production defaults to `smtp`.
+- `EMAIL_FROM`: Sender address used for verification messages.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`: SMTP transport configuration. User/password may be omitted for a trusted unauthenticated relay.
+- `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`: Optional Google OpenID Connect credentials. Configure the authorized redirect URI as `${APP_BASE_URL}/api/auth/callback/google`.
 - `APP_PORT`: Host port published by Docker Compose for the Next.js app.
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`: PostgreSQL container settings.
 - `SEED_ADMIN_PASSWORD`: Optional password for the seeded admin account. Defaults to `SEED_USER_PASSWORD`.
@@ -473,6 +481,9 @@ tests/               Vitest unit tests
 
 ## Assumptions
 
-- Session tokens are signed with `SESSION_SECRET` and stored in HTTP-only cookies. Do not commit real secrets.
+- Sessions are server-side database records referenced by secure HTTP-only cookies. Deploying the identity migration invalidates the former stateless session cookie, so users sign in again once after rollout.
+- Existing password hashes are migrated into credential-provider accounts. Existing users start unverified and must verify their current email before organization access is restored.
+- Google identities are never linked by matching email alone. Existing users must sign in first and explicitly link Google from their account page.
+- Email verification tokens are random, stored only as SHA-256 hashes, expire after 30 minutes, and are single use. Do not commit real secrets.
 - Match registration requires an accepted challenge and is limited to admins or match participants.
 - A second decline for the same challenger/challenged pair records a 3-0 forfeit win for the challenger.
