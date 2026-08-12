@@ -29,7 +29,7 @@ function actionError(error: unknown): VerificationFormState {
   }
 
   if (error instanceof z.ZodError) {
-    return { error: error.errors[0]?.message ?? "Enter a valid email address." };
+    return { error: error.issues[0]?.message ?? "Enter a valid email address." };
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

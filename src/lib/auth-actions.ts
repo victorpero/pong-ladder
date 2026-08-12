@@ -51,7 +51,7 @@ function getSafeRedirectPath(formData: FormData) {
 
 function authError(error: unknown): AuthFormState {
   if (error instanceof z.ZodError) {
-    return { error: error.errors[0]?.message ?? "Check the form and try again." };
+    return { error: error.issues[0]?.message ?? "Check the form and try again." };
   }
 
   if (error instanceof RateLimitError) {
