@@ -54,7 +54,8 @@ async function main() {
           username: "admin",
           fullName: "Pong Ladder Admin",
           email: "admin@pong.local",
-          passwordHash: adminPasswordHash,
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
           isAdmin: true,
           isApproved: true
         }
@@ -65,13 +66,24 @@ async function main() {
             username: player.username,
             fullName: player.fullName,
             email: `${player.username.toLowerCase()}@pong.local`,
-            passwordHash,
+            emailVerified: true,
+            emailVerifiedAt: new Date(),
             isApproved: true
           }
         })
       )
     ]
   );
+
+  await prisma.account.createMany({
+    data: users.map((user, index) => ({
+      id: `credential_${user.id}`,
+      userId: user.id,
+      accountId: user.id,
+      providerId: "credential",
+      password: index === 0 ? adminPasswordHash : passwordHash
+    }))
+  });
 
   const memberships = await Promise.all(
     users.map((user, index) =>

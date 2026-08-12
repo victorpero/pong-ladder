@@ -13,6 +13,10 @@ export default async function AwaitingApprovalPage() {
     redirect("/login?next=/awaiting-approval");
   }
 
+  if (!sessionUser.user.emailVerifiedAt) {
+    redirect("/verify-email?next=/awaiting-approval");
+  }
+
   const organization = await getDefaultOrganization(prisma);
   const membership = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId: sessionUser.user.id, organizationId: organization.id } },

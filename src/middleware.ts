@@ -1,14 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/verify-email"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
-  const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+  const session =
+    request.cookies.get("better-auth.session_token")?.value ||
+    request.cookies.get("__Secure-better-auth.session_token")?.value;
 
-  if (isPublicPath && session) {
+  if (pathname === "/login" && session) {
     return NextResponse.redirect(new URL("/ladder", request.url));
   }
 
@@ -24,4 +25,3 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)"]
 };
-

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/session";
+import { auth } from "@/lib/auth";
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
+  const signedOut = await auth.api.signOut({ headers: request.headers, asResponse: true });
   const response = NextResponse.redirect(new URL("/login", request.url));
 
-  response.cookies.delete(SESSION_COOKIE_NAME);
+  const setCookie = signedOut.headers.get("set-cookie");
+  if (setCookie) {
+    response.headers.set("set-cookie", setCookie);
+  }
 
   return response;
 }
-

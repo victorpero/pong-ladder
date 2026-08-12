@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { getDefaultOrganization } from "@/lib/organizations";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 export async function GET() {
   try {
@@ -16,20 +15,23 @@ export async function GET() {
     throw error;
   }
 
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const sessionUser = await getSessionUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return NextResponse.json({ isAdmin: false }, { status: 401 });
   }
 
   const organization = await getDefaultOrganization(prisma);
   const membership = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
+    where: { userId_organizationId: { userId: sessionUser.user.id, organizationId: organization.id } },
     select: { role: true, status: true }
   });
 
   return NextResponse.json({
-    isAdmin: membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER"),
-    isApproved: membership?.status === "ACTIVE"
+    isAdmin:
+      Boolean(sessionUser.user.emailVerifiedAt) &&
+      membership?.status === "ACTIVE" &&
+      (membership.role === "ADMIN" || membership.role === "OWNER"),
+    isApproved: Boolean(sessionUser.user.emailVerifiedAt) && membership?.status === "ACTIVE"
   });
 }

@@ -1,26 +1,37 @@
 import { MembershipRole, MembershipStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ membership: null as null | { role: MembershipRole; status: MembershipStatus } }));
+const state = vi.hoisted(() => ({
+  membership: null as null | { role: MembershipRole; status: MembershipStatus },
+  emailVerifiedAt: new Date() as Date | null
+}));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     membership: {
       findUnique: async () =>
         state.membership
-          ? { id: "membership", userId: "user", organizationId: "org", organization: { id: "org" }, ...state.membership }
+          ? {
+              id: "membership",
+              userId: "user",
+              organizationId: "org",
+              organization: { id: "org" },
+              user: { emailVerifiedAt: state.emailVerifiedAt },
+              ...state.membership
+            }
           : null
     }
   }
 }));
 
-vi.mock("next/headers", () => ({ cookies: () => ({ get: () => undefined }) }));
+vi.mock("next/headers", () => ({ headers: () => new Headers() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
 const { requireActiveMembership, requireOrgAdmin, requireOrgOwner } = await import("@/lib/authz");
 
 beforeEach(() => {
   state.membership = null;
+  state.emailVerifiedAt = new Date();
 });
 
 describe("organization authorization", () => {
@@ -33,6 +44,12 @@ describe("organization authorization", () => {
   );
 
   it("rejects users without a membership", async () => {
+    await expect(requireActiveMembership("user", "org")).rejects.toThrow("Organization access required.");
+  });
+
+  it("rejects active memberships until the user's email is verified", async () => {
+    state.membership = { role: MembershipRole.PLAYER, status: MembershipStatus.ACTIVE };
+    state.emailVerifiedAt = null;
     await expect(requireActiveMembership("user", "org")).rejects.toThrow("Organization access required.");
   });
 

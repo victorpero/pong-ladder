@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import { ChangePasswordForm } from "@/app/account/ChangePasswordForm";
+import { ChangeEmailForm } from "@/app/account/ChangeEmailForm";
+import { LinkedAccounts } from "@/app/account/LinkedAccounts";
 import { EmptyState } from "@/components/EmptyState";
 import { PlayerStats } from "@/components/PlayerStats";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
 import { requireActiveUser } from "@/lib/authz";
+import { googleAuthEnabled } from "@/lib/auth";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate, formatDate } from "@/lib/format";
@@ -18,11 +21,15 @@ export const dynamic = "force-dynamic";
 export default async function AccountPage() {
   const { session, organization } = await requireActiveUser("/account");
 
-  const [user, season] = await Promise.all([
+  const [user, season, authAccounts] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub }
     }),
-    getActiveSeason(organization.id)
+    getActiveSeason(organization.id),
+    prisma.account.findMany({
+      where: { userId: session.sub },
+      select: { providerId: true }
+    })
   ]);
 
   if (!user) {
@@ -63,6 +70,7 @@ export default async function AccountPage() {
   const rival = selectRival(headToHead);
   const seasonLabel = season ? getSeasonLabel(season.year, season.seasonNumber) : "";
   const publicName = publicNames.get(user.id) ?? getPublicPlayerName(user);
+  const hasPassword = authAccounts.some((account) => account.providerId === "credential");
 
   return (
     <main className="page-shell">
@@ -101,8 +109,30 @@ export default async function AccountPage() {
             <p className="label">Security</p>
             <h2 className="mt-1 text-2xl font-black">Change password</h2>
           </div>
-          <ChangePasswordForm />
+          {hasPassword ? (
+            <ChangePasswordForm />
+          ) : (
+            <p className="text-sm leading-6 text-muted">This account signs in through a linked identity provider.</p>
+          )}
         </section>
+
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Identity</p>
+            <h2 className="mt-1 text-2xl font-black">Change email</h2>
+          </div>
+          <ChangeEmailForm />
+        </section>
+
+        {googleAuthEnabled ? (
+          <section className="section-band">
+            <div className="mb-4">
+              <p className="label">Sign-in methods</p>
+              <h2 className="mt-1 text-2xl font-black">Linked accounts</h2>
+            </div>
+            <LinkedAccounts googleLinked={authAccounts.some((account) => account.providerId === "google")} />
+          </section>
+        ) : null}
 
         <section className="section-band">
           <div className="mb-4">
