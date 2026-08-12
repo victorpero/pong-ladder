@@ -2,6 +2,8 @@ import { ChallengeStatus } from "@prisma/client";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicPlayerName } from "@/lib/display-name";
+import { requireActiveMembership } from "@/lib/authz";
+import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
@@ -23,16 +25,15 @@ export async function GET() {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { isAdmin: true, isApproved: true }
-  });
-
-  if (!user?.isApproved && !user?.isAdmin) {
+  const organization = await getDefaultOrganization(prisma);
+  try {
+    await requireActiveMembership(session.sub, organization.id);
+  } catch {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
   }
 
   const where = {
+    organizationId: organization.id,
     challengedId: session.sub,
     status: ChallengeStatus.Pending
   };

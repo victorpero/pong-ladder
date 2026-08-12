@@ -8,10 +8,10 @@ import { getTeamDisplayName } from "@/lib/team-display";
 export const dynamic = "force-dynamic";
 
 export default async function PlayersPage() {
-  await requireActiveUser("/players");
+  const { organization } = await requireActiveUser("/players");
   const [users, activeSeason] = await Promise.all([
-    getUsers(),
-    getActiveSeason()
+    getUsers(organization.id),
+    getActiveSeason(organization.id)
   ]);
   const ladder = activeSeason ? await getLadder(activeSeason.id) : [];
   const publicNames = getPublicPlayerNames(users);

@@ -12,19 +12,14 @@ import { getActiveSeason, getLadder } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function MatchesPage({ searchParams }: { searchParams?: { challengeId?: string } }) {
-  const { session } = await requireActiveUser("/matches");
-  const season = await getActiveSeason();
+  const { session, organization } = await requireActiveUser("/matches");
+  const season = await getActiveSeason(organization.id);
   const ladder = season ? await getLadder(season.id) : [];
   const matches = season
     ? await prisma.match.findMany({
         where: {
+          organizationId: organization.id,
           seasonId: season.id,
-          winner: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          },
-          loser: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          }
         },
         include: { winner: true, loser: true, challenge: true },
         orderBy: matchFeedOrderBy,
@@ -34,15 +29,10 @@ export default async function MatchesPage({ searchParams }: { searchParams?: { c
   const acceptedChallenges = season && session
     ? await prisma.challenge.findMany({
         where: {
+          organizationId: organization.id,
           seasonId: season.id,
           status: "Accepted",
           OR: [{ challengerId: session.sub }, { challengedId: session.sub }],
-          challenger: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          },
-          challenged: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          }
         },
         include: { challenger: true, challenged: true },
         orderBy: { createdAt: "desc" }

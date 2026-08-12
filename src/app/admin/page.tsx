@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
-import { ChallengeStatus } from "@prisma/client";
+import { ChallengeStatus, MembershipRole, MembershipStatus } from "@prisma/client";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -14,6 +12,7 @@ import {
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
 import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
+import { requireAdminUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
@@ -21,43 +20,23 @@ import { matchFeedOrderBy } from "@/lib/match-feed";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 import { selectSeasonJoinCandidates } from "@/lib/season-membership";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { getTeamDisplayName } from "@/lib/team-display";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/admin");
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { isAdmin: true }
-  });
-
-  if (!currentUser?.isAdmin) {
-    redirect("/ladder");
-  }
-
-  const season = await getActiveSeason();
-  const [ladder, users, pendingAccounts, matches, challenges, openChallenges] = await Promise.all([
+  const { organization } = await requireAdminUser();
+  const season = await getActiveSeason(organization.id);
+  const [ladder, activeMemberships, pendingMemberships, matches, challenges, openChallenges] = await Promise.all([
     getLadder(season.id),
-    prisma.user.findMany({
-      where: {
-        OR: [{ isApproved: true }, { isAdmin: true }]
-      },
-      include: { team: true },
-      orderBy: [{ isAdmin: "desc" }, { username: "asc" }]
+    prisma.membership.findMany({
+      where: { organizationId: organization.id, status: MembershipStatus.ACTIVE },
+      include: { user: true, team: true },
+      orderBy: [{ role: "asc" }, { user: { username: "asc" } }]
     }),
-    prisma.user.findMany({
-      where: {
-        isApproved: false,
-        isAdmin: false
-      },
-      include: { team: true },
+    prisma.membership.findMany({
+      where: { organizationId: organization.id, status: MembershipStatus.PENDING },
+      include: { user: true, team: true },
       orderBy: { createdAt: "asc" }
     }),
     prisma.match.findMany({
@@ -72,12 +51,23 @@ export default async function AdminPage() {
     }),
     prisma.challenge.findMany({
       where: {
+        organizationId: organization.id,
         status: { in: [ChallengeStatus.Pending, ChallengeStatus.Accepted] },
         match: null
       },
       select: { challengerId: true, challengedId: true }
     })
   ]);
+  const users = activeMemberships.map((membership) => ({
+    ...membership.user,
+    team: membership.team,
+    membershipRole: membership.role
+  }));
+  const pendingAccounts = pendingMemberships.map((membership) => ({
+    ...membership.user,
+    team: membership.team,
+    requestedAt: membership.createdAt
+  }));
   const openChallengeCounts = getChallengeCounts(openChallenges);
   const publicNames = getPublicPlayerNames(
     uniqueUsers([
@@ -128,7 +118,7 @@ export default async function AdminPage() {
                       <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
                       <p className="text-sm text-muted">{user.email}</p>
                       <p className="mt-1 text-sm font-semibold text-muted">
-                        {user.username} · requested {compactDate(user.createdAt)}
+                        {user.username} · requested {compactDate(user.requestedAt)}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
@@ -142,7 +132,7 @@ export default async function AdminPage() {
                         <input type="hidden" name="userId" value={user.id} />
                         <ConfirmSubmitButton
                           className="button-danger"
-                          confirmation="This will decline and delete the pending account. The person can submit a new request later."
+                          confirmation="This will reject the pending organization membership."
                         >
                           Decline
                         </ConfirmSubmitButton>
@@ -222,7 +212,11 @@ export default async function AdminPage() {
                       <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
                       <p className="text-sm text-muted">
                         {getTeamDisplayName(user)}
-                        {user.isAdmin ? " · admin" : ""}
+                        {user.membershipRole === MembershipRole.OWNER
+                          ? " · owner"
+                          : user.membershipRole === MembershipRole.ADMIN
+                            ? " · admin"
+                            : ""}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-muted">
                         {user.username} · {openChallengeCount} open challenge{openChallengeCount === 1 ? "" : "s"}
@@ -243,9 +237,9 @@ export default async function AdminPage() {
                         <input type="hidden" name="userId" value={user.id} />
                         <ConfirmSubmitButton
                           className="button-danger"
-                          confirmation="This will permanently delete the player from the database. Related season memberships, rankings, matches, and challenges will be removed."
+                          confirmation="This will suspend the player's organization membership and remove current-season participation."
                         >
-                          Delete player
+                          Suspend player
                         </ConfirmSubmitButton>
                       </form>
                     </div>

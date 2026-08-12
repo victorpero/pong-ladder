@@ -1,4 +1,4 @@
-import { ChallengeStatus, PrismaClient } from "@prisma/client";
+import { ChallengeStatus, MembershipRole, MembershipStatus, OrganizationType, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { getSeasonName, getSeasonNumber, getSeasonWindowForNumber } from "../src/lib/fixed-seasons";
 import { calculateMatchScore } from "../src/lib/scoring";
@@ -12,6 +12,16 @@ async function main() {
   await prisma.season.deleteMany();
   await prisma.user.deleteMany();
   await prisma.team.deleteMany();
+  await prisma.organization.deleteMany();
+
+  const organization = await prisma.organization.create({
+    data: {
+      id: "org_polisen",
+      slug: "polisen",
+      name: "Polisen",
+      type: OrganizationType.WORKPLACE
+    }
+  });
 
   const year = new Date().getFullYear();
   const seedUserPassword = process.env.SEED_USER_PASSWORD || "password123";
@@ -21,10 +31,11 @@ async function main() {
   const seededTeams = await Promise.all(
     ["Spin Doctors", "Net Gains", "Paddle Force"].map((name) =>
       prisma.team.create({
-        data: { name }
+        data: { name, organizationId: organization.id }
       })
     )
   );
+
   const players = [
     { username: "Anders", fullName: "Anders Persson", teamId: seededTeams[0].id },
     { username: "AndersPalm", fullName: "Anders Palm", teamId: seededTeams[0].id },
@@ -55,13 +66,27 @@ async function main() {
             fullName: player.fullName,
             email: `${player.username.toLowerCase()}@pong.local`,
             passwordHash,
-            teamId: player.teamId,
             isApproved: true
           }
         })
       )
     ]
   );
+
+  const memberships = await Promise.all(
+    users.map((user, index) =>
+      prisma.membership.create({
+        data: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: index === 0 ? MembershipRole.OWNER : MembershipRole.PLAYER,
+          status: MembershipStatus.ACTIVE,
+          teamId: index === 0 ? null : players[index - 1].teamId
+        }
+      })
+    )
+  );
+  const membershipByUserId = new Map(memberships.map((membership) => [membership.userId, membership]));
 
   const ladderUsers = users.slice(1);
 
@@ -72,6 +97,7 @@ async function main() {
 
       return prisma.season.create({
         data: {
+          organizationId: organization.id,
           name: getSeasonName(year, seasonNumber),
           year,
           seasonNumber,
@@ -90,7 +116,9 @@ async function main() {
     ladderUsers.map((user, index) =>
       prisma.seasonPlayer.create({
         data: {
+          organizationId: organization.id,
           seasonId: season.id,
+          membershipId: membershipByUserId.get(user.id)!.id,
           userId: user.id,
           points: startingPoints[index],
           currentRank: index + 1,
@@ -102,6 +130,7 @@ async function main() {
 
   const completedChallenge = await prisma.challenge.create({
     data: {
+      organizationId: organization.id,
       seasonId: season.id,
       challengerId: ladderUsers[3].id,
       challengedId: ladderUsers[1].id,
@@ -139,6 +168,7 @@ async function main() {
   await prisma.challenge.createMany({
     data: [
       {
+        organizationId: organization.id,
         seasonId: season.id,
         challengerId: ladderUsers[5].id,
         challengedId: ladderUsers[4].id,
@@ -146,6 +176,7 @@ async function main() {
         declinedCount: 0
       },
       {
+        organizationId: organization.id,
         seasonId: season.id,
         challengerId: ladderUsers[7].id,
         challengedId: ladderUsers[6].id,
@@ -153,6 +184,7 @@ async function main() {
         declinedCount: 0
       },
       {
+        organizationId: organization.id,
         seasonId: season.id,
         challengerId: ladderUsers[2].id,
         challengedId: ladderUsers[0].id,
@@ -192,6 +224,7 @@ async function registerSeedMatch(input: {
 
   await prisma.match.create({
     data: {
+      organizationId: winner.organizationId,
       seasonId: input.seasonId,
       winnerId: input.winnerId,
       loserId: input.loserId,

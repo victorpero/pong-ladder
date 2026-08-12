@@ -8,33 +8,36 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
-  const { session } = await requireActiveUser("/teams");
+  const { session, organization } = await requireActiveUser("/teams");
 
-  const [currentUser, teams] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: session.sub },
-      include: { team: true }
+  const [currentMembership, teams] = await Promise.all([
+    prisma.membership.findUnique({
+      where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
+      include: { user: true, team: true }
     }),
     prisma.team.findMany({
+      where: { organizationId: organization.id },
       include: {
         members: {
-          where: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          },
-          orderBy: { username: "asc" }
+          where: { organizationId: organization.id, status: "ACTIVE" },
+          include: { user: true },
+          orderBy: { user: { username: "asc" } }
         }
       },
       orderBy: { name: "asc" }
     })
   ]);
 
-  if (!currentUser) {
+  if (!currentMembership) {
     redirect("/logout");
   }
 
+  const currentUser = { ...currentMembership.user, team: currentMembership.team, teamId: currentMembership.teamId };
+  const teamsWithUsers = teams.map((team) => ({ ...team, members: team.members.map((member) => member.user) }));
+
   const publicNames = getPublicPlayerNames([
     currentUser,
-    ...teams.flatMap((team) => team.members)
+    ...teamsWithUsers.flatMap((team) => team.members)
   ]);
 
   return (
@@ -45,10 +48,10 @@ export default async function TeamsPage() {
           <h1 className="mt-1 text-3xl font-black">Team directory</h1>
 
           <div className="mt-6 grid gap-3">
-            {teams.length === 0 ? (
+            {teamsWithUsers.length === 0 ? (
               <EmptyState title="No teams yet" body="Create the first team and invite players to join it." />
             ) : (
-              teams.map((team) => {
+              teamsWithUsers.map((team) => {
                 const isCurrentTeam = currentUser.teamId === team.id;
                 const isEmptyTeam = team.members.length === 0;
 

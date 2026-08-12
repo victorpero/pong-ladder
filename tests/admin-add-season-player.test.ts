@@ -2,8 +2,16 @@ import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type UserRow = { id: string; username: string; isApproved: boolean; isAdmin: boolean };
-type SeasonRow = { id: string; isActive: boolean };
-type SeasonPlayerRow = { id: string; seasonId: string; userId: string; points: number; currentRank: number };
+type SeasonRow = { id: string; organizationId: string; isActive: boolean };
+type SeasonPlayerRow = {
+  id: string;
+  organizationId: string;
+  membershipId: string;
+  seasonId: string;
+  userId: string;
+  points: number;
+  currentRank: number;
+};
 
 const state = vi.hoisted(() => ({
   session: null as { sub: string } | null,
@@ -32,6 +40,21 @@ vi.mock("@/lib/session", () => ({
   verifySessionToken: async () => state.session
 }));
 
+vi.mock("@/lib/authz", () => ({
+  requireAdminUser: async () => {
+    if (!state.session) {
+      throw new Error("REDIRECT:/login?next=/admin");
+    }
+
+    const user = state.users.find((candidate) => candidate.id === state.session?.sub);
+    if (!user?.isAdmin) {
+      throw new Error("Admin access required.");
+    }
+
+    return { session: state.session, organization: { id: "org-polisen" } };
+  }
+}));
+
 vi.mock("@/lib/prisma", () => {
   const db = {
     user: {
@@ -44,6 +67,11 @@ vi.mock("@/lib/prisma", () => {
     },
     season: {
       findUnique: async ({ where }: { where: { id: string } }) => state.seasons.find((season) => season.id === where.id) ?? null
+    },
+    membership: {
+      findUnique: async ({ where }: { where: { userId_organizationId: { userId: string; organizationId: string } } }) => ({
+        id: `membership-${where.userId_organizationId.userId}`
+      })
     },
     seasonPlayer: {
       findUnique: async ({ where }: { where: { seasonId_userId: { seasonId: string; userId: string } } }) =>
@@ -99,11 +127,19 @@ beforeEach(() => {
     { id: "pending-1", username: "kalle", isApproved: false, isAdmin: false }
   ];
   state.seasons = [
-    { id: "season-active", isActive: true },
-    { id: "season-past", isActive: false }
+    { id: "season-active", organizationId: "org-polisen", isActive: true },
+    { id: "season-past", organizationId: "org-polisen", isActive: false }
   ];
   state.seasonPlayers = [
-    { id: "season-player-existing", seasonId: "season-active", userId: "player-2", points: 12, currentRank: 1 }
+    {
+      id: "season-player-existing",
+      organizationId: "org-polisen",
+      membershipId: "membership-player-2",
+      seasonId: "season-active",
+      userId: "player-2",
+      points: 12,
+      currentRank: 1
+    }
   ];
 });
 
@@ -138,6 +174,8 @@ describe("adminAddSeasonPlayer", () => {
   it("places the new player at the bottom of the ladder with no points", async () => {
     state.seasonPlayers.push({
       id: "season-player-gap",
+      organizationId: "org-polisen",
+      membershipId: "membership-admin-1",
       seasonId: "season-active",
       userId: "admin-1",
       points: 4,

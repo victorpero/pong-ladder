@@ -16,13 +16,13 @@ import { getActiveSeason, getLadder, getPlayerMatches } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const { session } = await requireActiveUser("/account");
+  const { session, organization } = await requireActiveUser("/account");
 
   const [user, season] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub }
     }),
-    getActiveSeason()
+    getActiveSeason(organization.id)
   ]);
 
   if (!user) {
@@ -34,17 +34,12 @@ export default async function AccountPage() {
 
   const [allMatches, challenges] = season
     ? await Promise.all([
-        getPlayerMatches(user.id),
+        getPlayerMatches(user.id, organization.id),
         prisma.challenge.findMany({
           where: {
+            organizationId: organization.id,
             seasonId: season.id,
             OR: [{ challengerId: user.id }, { challengedId: user.id }],
-            challenger: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            },
-            challenged: {
-              OR: [{ isApproved: true }, { isAdmin: true }]
-            }
           },
           include: { challenger: true, challenged: true },
           orderBy: { createdAt: "desc" },

@@ -12,20 +12,15 @@ import { getActiveSeason, getLadder } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function ChallengesPage() {
-  const { session } = await requireActiveUser("/challenges");
-  const season = await getActiveSeason();
+  const { session, organization } = await requireActiveUser("/challenges");
+  const season = await getActiveSeason(organization.id);
   const ladder = season ? await getLadder(season.id) : [];
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const rawChallenges = season
     ? await prisma.challenge.findMany({
         where: {
+          organizationId: organization.id,
           seasonId: season.id,
-          challenger: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          },
-          challenged: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          }
         },
         include: { challenger: true, challenged: true, match: true },
         orderBy: { createdAt: "desc" }

@@ -37,7 +37,7 @@ export function getSeasonLabel(year: number, seasonNumber: number) {
   return `${getSeasonYearNumber(year)}.${seasonNumber}`;
 }
 
-export async function ensureCurrentSeason(tx: Prisma.TransactionClient, date = new Date()) {
+export async function ensureCurrentSeason(tx: Prisma.TransactionClient, organizationId: string, date = new Date()) {
   const window = getSeasonWindow(date);
   let currentSeason: Season | null = null;
 
@@ -46,6 +46,7 @@ export async function ensureCurrentSeason(tx: Prisma.TransactionClient, date = n
     const name = getSeasonName(fixedWindow.year, fixedWindow.seasonNumber);
     const existing = await tx.season.findFirst({
       where: {
+        organizationId,
         year: fixedWindow.year,
         seasonNumber: fixedWindow.seasonNumber
       },
@@ -65,6 +66,7 @@ export async function ensureCurrentSeason(tx: Prisma.TransactionClient, date = n
       : await tx.season.create({
           data: {
             ...fixedWindow,
+            organizationId,
             name,
             isActive: seasonNumber === window.seasonNumber
           }
@@ -81,6 +83,7 @@ export async function ensureCurrentSeason(tx: Prisma.TransactionClient, date = n
 
   await tx.season.updateMany({
     where: {
+      organizationId,
       isActive: true,
       NOT: { id: currentSeason.id }
     },

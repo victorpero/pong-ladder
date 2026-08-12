@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type ChallengeRow = {
   id: string;
+  organizationId: string;
   seasonId: string;
   challengerId: string;
   challengedId: string;
@@ -37,7 +38,7 @@ vi.mock("@/lib/authz", () => ({
       throw new Error("REDIRECT:/login");
     }
 
-    return { session: state.session };
+    return { session: state.session, organization: { id: "org-polisen" } };
   }
 }));
 
@@ -90,6 +91,9 @@ vi.mock("@/lib/prisma", () => {
     });
 
   const db = {
+    season: {
+      findUnique: async () => ({ id: "season-1", organizationId: "org-polisen" })
+    },
     seasonPlayer: {
       findMany: async () => state.ladder
     },
@@ -128,7 +132,15 @@ function challengeForm(challengedId: string) {
 }
 
 function activeChallenge(challengerId: string, challengedId: string, status: ChallengeStatus): ChallengeRow {
-  return { id: "challenge-existing", seasonId: "season-1", challengerId, challengedId, status, declinedCount: 0 };
+  return {
+    id: "challenge-existing",
+    organizationId: "org-polisen",
+    seasonId: "season-1",
+    challengerId,
+    challengedId,
+    status,
+    declinedCount: 0
+  };
 }
 
 beforeEach(() => {

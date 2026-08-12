@@ -14,8 +14,8 @@ import { getTeamDisplayName } from "@/lib/team-display";
 export const dynamic = "force-dynamic";
 
 export default async function LadderPage() {
-  const { session } = await requireActiveUser("/ladder");
-  const season = await getActiveSeason();
+  const { session, organization } = await requireActiveUser("/ladder");
+  const season = await getActiveSeason(organization.id);
 
   if (!season) {
     return (
@@ -28,7 +28,7 @@ export default async function LadderPage() {
   const [ladder, teamLadder, viewerMatches] = await Promise.all([
     getLadder(season.id),
     getTeamLadder(season.id),
-    session ? getPlayerMatches(session.sub) : []
+    session ? getPlayerMatches(session.sub, organization.id) : []
   ]);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
   const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
