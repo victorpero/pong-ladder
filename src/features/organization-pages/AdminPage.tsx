@@ -2,6 +2,7 @@ import { ChallengeStatus, MembershipRole, MembershipStatus } from "@prisma/clien
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
+import { OrganizationPolicySettings } from "@/components/OrganizationPolicySettings";
 import {
   adminApproveUser,
   adminCancelOpenChallengesForPlayer,
@@ -24,7 +25,7 @@ import { getTeamDisplayName } from "@/lib/team-display";
 import { organizationPath } from "@/lib/organization-paths";
 
 export default async function OrganizationAdminPage({ organizationSlug }: { organizationSlug: string }) {
-  const { organization } = await requireOrganizationAdmin(
+  const { organization, membership } = await requireOrganizationAdmin(
     organizationSlug,
     organizationPath(organizationSlug, "admin")
   );
@@ -104,6 +105,16 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
+        {membership.role === MembershipRole.OWNER ? (
+          <OrganizationPolicySettings
+            organizationSlug={organization.slug}
+            joinPolicy={organization.joinPolicy}
+            allowedEmailDomains={organization.allowedEmailDomains}
+            accessCodeEnabled={organization.accessCodeEnabled}
+            accessCodeUpdatedAt={organization.accessCodeUpdatedAt?.toISOString() ?? null}
+          />
+        ) : null}
+
         <section className="section-band">
           <div className="mb-4">
             <p className="label">Approvals</p>

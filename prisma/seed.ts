@@ -1,6 +1,15 @@
-import { ChallengeStatus, MembershipRole, MembershipStatus, OrganizationType, PrismaClient } from "@prisma/client";
+import {
+  ChallengeStatus,
+  MembershipJoinMethod,
+  MembershipRole,
+  MembershipStatus,
+  OrganizationJoinPolicy,
+  OrganizationType,
+  PrismaClient
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { getSeasonName, getSeasonNumber, getSeasonWindowForNumber } from "../src/lib/fixed-seasons";
+import { hashOrganizationAccessCode, normalizeOrganizationAccessCode } from "../src/lib/organization-access-code";
 import { calculateMatchScore } from "../src/lib/scoring";
 
 const prisma = new PrismaClient();
@@ -14,12 +23,22 @@ async function main() {
   await prisma.team.deleteMany();
   await prisma.organization.deleteMany();
 
+  const configuredPolisenCode = process.env.POLISEN_ACCESS_CODE?.trim();
+
+  if (configuredPolisenCode && !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/.test(normalizeOrganizationAccessCode(configuredPolisenCode))) {
+    throw new Error("POLISEN_ACCESS_CODE must contain 12 supported access-code characters.");
+  }
+
   const organization = await prisma.organization.create({
     data: {
       id: "org_polisen",
       slug: "polisen",
       name: "Polisen",
-      type: OrganizationType.WORKPLACE
+      type: OrganizationType.WORKPLACE,
+      joinPolicy: OrganizationJoinPolicy.ACCESS_CODE,
+      accessCodeHash: configuredPolisenCode ? hashOrganizationAccessCode(configuredPolisenCode) : null,
+      accessCodeEnabled: Boolean(configuredPolisenCode),
+      accessCodeUpdatedAt: configuredPolisenCode ? new Date() : null
     }
   });
 
@@ -93,6 +112,8 @@ async function main() {
           organizationId: organization.id,
           role: index === 0 ? MembershipRole.OWNER : MembershipRole.PLAYER,
           status: MembershipStatus.ACTIVE,
+          joinMethod: MembershipJoinMethod.LEGACY,
+          activatedAt: new Date(),
           teamId: index === 0 ? null : players[index - 1].teamId
         }
       })

@@ -115,7 +115,7 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
 }
 
 export async function adminApproveUser(formData: FormData) {
-  const { organization } = await requireAdmin(formData);
+  const { organization, session } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.membership.updateMany({
@@ -124,19 +124,24 @@ export async function adminApproveUser(formData: FormData) {
       organizationId: organization.id,
       status: MembershipStatus.PENDING
     },
-    data: { status: MembershipStatus.ACTIVE }
+    data: {
+      status: MembershipStatus.ACTIVE,
+      activatedAt: new Date(),
+      reviewedAt: new Date(),
+      reviewedById: session.sub
+    }
   });
 
   refreshAdmin(organization.slug);
 }
 
 export async function adminDeclinePendingUser(formData: FormData) {
-  const { organization } = await requireAdmin(formData);
+  const { organization, session } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.membership.updateMany({
     where: { userId, organizationId: organization.id, status: MembershipStatus.PENDING },
-    data: { status: MembershipStatus.REJECTED }
+    data: { status: MembershipStatus.REJECTED, reviewedAt: new Date(), reviewedById: session.sub }
   });
 
   refreshAdmin(organization.slug);

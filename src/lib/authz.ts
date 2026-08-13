@@ -163,6 +163,19 @@ export async function requireOrganizationAdmin(
   return context;
 }
 
+export async function requireOrganizationOwner(
+  organizationSlug: string,
+  nextPath = organizationPath(organizationSlug, "admin")
+) {
+  const context = await requireOrganizationUser(organizationSlug, nextPath);
+
+  if (context.membership.role !== MembershipRole.OWNER) {
+    notFound();
+  }
+
+  return context;
+}
+
 export async function requireAdminUser(organizationId?: string) {
   const sessionUser = await requireAuthenticatedUser("/admin");
 

@@ -1,6 +1,6 @@
 "use server";
 
-import { ChallengeStatus, MembershipRole, MembershipStatus, Prisma } from "@prisma/client";
+import { ChallengeStatus, MembershipJoinMethod, MembershipRole, MembershipStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -92,7 +92,7 @@ async function requireAdmin(formData: FormData) {
 }
 
 export async function createPlayer(formData: FormData) {
-  const { organization } = await requireAdmin(formData);
+  const { organization, session } = await requireAdmin(formData);
 
   const parsed = playerSchema.parse({
     username: value(formData, "username"),
@@ -128,7 +128,11 @@ export async function createPlayer(formData: FormData) {
         userId: user.id,
         organizationId: organization.id,
         role: MembershipRole.PLAYER,
-        status: MembershipStatus.ACTIVE
+        status: MembershipStatus.ACTIVE,
+        joinMethod: MembershipJoinMethod.ADMIN_CREATED,
+        activatedAt: new Date(),
+        reviewedAt: new Date(),
+        reviewedById: session.sub
       }
     });
 
