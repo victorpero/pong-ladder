@@ -1,12 +1,11 @@
 import { ChallengeStatus } from "@prisma/client";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, requireActiveMembership } from "@/lib/authz";
 import { getPublicPlayerName } from "@/lib/display-name";
-import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     consumeRateLimit(getClientRateLimitKey("api:notifications"), 120, 60 * 1000);
   } catch (error) {
@@ -23,7 +22,15 @@ export async function GET() {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 401 });
   }
 
-  const organization = await getDefaultOrganization(prisma);
+  const organizationSlug = request.nextUrl.searchParams.get("organization") ?? "";
+  const organization = await prisma.organization.findUnique({
+    where: { slug: organizationSlug },
+    select: { id: true }
+  });
+
+  if (!organization) {
+    return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
+  }
   try {
     await requireActiveMembership(sessionUser.user.id, organization.id);
   } catch {

@@ -4,13 +4,15 @@ import { ChallengeStatus, MembershipStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere } from "@/lib/admin-cleanup";
-import { requireAdminUser } from "@/lib/authz";
+import { requireOrganizationAdmin } from "@/lib/authz";
+import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
 import { addPlayerToSeason, alreadyInSeasonMessage } from "@/lib/season-membership";
 
 const idSchema = z.string().min(1);
+const organizationSlugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const addSeasonPlayerSchema = z.object({
   seasonId: idSchema,
@@ -29,20 +31,20 @@ function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
 }
 
-function refreshAdmin() {
-  revalidatePath("/", "layout");
-  revalidatePath("/admin");
-  revalidatePath("/ladder");
-  revalidatePath("/players");
-  revalidatePath("/matches");
-  revalidatePath("/challenges");
-  revalidatePath("/teams");
-  revalidatePath("/account");
-  revalidatePath("/awaiting-approval");
+function refreshAdmin(organizationSlug: string) {
+  revalidatePath(organizationsPath);
+  revalidatePath(organizationPath(organizationSlug, "admin"));
+  revalidatePath(organizationPath(organizationSlug, "ladder"));
+  revalidatePath(organizationPath(organizationSlug, "players"));
+  revalidatePath(organizationPath(organizationSlug, "matches"));
+  revalidatePath(organizationPath(organizationSlug, "challenges"));
+  revalidatePath(organizationPath(organizationSlug, "teams"));
+  revalidatePath(organizationPath(organizationSlug, "account"));
 }
 
-async function requireAdmin() {
-  return requireAdminUser();
+async function requireAdmin(formData: FormData) {
+  const slug = organizationSlugSchema.parse(value(formData, "organizationSlug"));
+  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
 }
 
 async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: string) {
@@ -113,7 +115,7 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
 }
 
 export async function adminApproveUser(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.membership.updateMany({
@@ -125,11 +127,11 @@ export async function adminApproveUser(formData: FormData) {
     data: { status: MembershipStatus.ACTIVE }
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeclinePendingUser(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.membership.updateMany({
@@ -137,11 +139,11 @@ export async function adminDeclinePendingUser(formData: FormData) {
     data: { status: MembershipStatus.REJECTED }
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminAddSeasonPlayer(_state: AdminFormState, formData: FormData): Promise<AdminFormState> {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
 
   const parsed = addSeasonPlayerSchema.safeParse({
     seasonId: value(formData, "seasonId"),
@@ -193,7 +195,7 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
       return { error: alreadyInSeasonMessage };
     }
 
-    refreshAdmin();
+    refreshAdmin(organization.slug);
 
     return { success: `${user.username} was added to the season.` };
   } catch (error) {
@@ -210,7 +212,7 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
 }
 
 export async function adminRemoveSeasonPlayer(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const seasonPlayerId = idSchema.parse(value(formData, "seasonPlayerId"));
 
   await prisma.$transaction(async (tx) => {
@@ -246,11 +248,11 @@ export async function adminRemoveSeasonPlayer(formData: FormData) {
     await rebuildSeasonStandings(tx, seasonPlayer.seasonId);
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
@@ -268,11 +270,11 @@ export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
     });
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeletePlayer(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
@@ -286,11 +288,11 @@ export async function adminDeletePlayer(formData: FormData) {
     });
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeleteMatch(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const matchId = idSchema.parse(value(formData, "matchId"));
 
   await prisma.$transaction(async (tx) => {
@@ -320,11 +322,11 @@ export async function adminDeleteMatch(formData: FormData) {
     await rebuildSeasonStandings(tx, match.seasonId);
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeleteChallenge(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const challengeId = idSchema.parse(value(formData, "challengeId"));
 
   await prisma.$transaction(async (tx) => {
@@ -359,5 +361,5 @@ export async function adminDeleteChallenge(formData: FormData) {
     }
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }

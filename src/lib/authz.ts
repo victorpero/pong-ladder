@@ -1,7 +1,8 @@
 import { MembershipRole, MembershipStatus } from "@prisma/client";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { organizationPath } from "@/lib/organization-paths";
 import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
@@ -124,6 +125,42 @@ export async function requireActiveUser(nextPath: string, organizationId?: strin
 
     throw error;
   }
+}
+
+export async function requireOrganizationUser(organizationSlug: string, nextPath = organizationPath(organizationSlug)) {
+  const sessionUser = await requireAuthenticatedUser(nextPath);
+
+  if (!sessionUser.user.emailVerifiedAt) {
+    redirect(`${verifyEmailPath}?next=${encodeURIComponent(nextPath)}`);
+  }
+
+  const membership = await prisma.membership.findFirst({
+    where: {
+      userId: sessionUser.user.id,
+      status: MembershipStatus.ACTIVE,
+      organization: { slug: organizationSlug }
+    },
+    include: { organization: true }
+  });
+
+  if (!membership) {
+    notFound();
+  }
+
+  return { ...sessionUser, organization: membership.organization, membership };
+}
+
+export async function requireOrganizationAdmin(
+  organizationSlug: string,
+  nextPath = organizationPath(organizationSlug, "admin")
+) {
+  const context = await requireOrganizationUser(organizationSlug, nextPath);
+
+  if (context.membership.role !== MembershipRole.OWNER && context.membership.role !== MembershipRole.ADMIN) {
+    notFound();
+  }
+
+  return context;
 }
 
 export async function requireAdminUser(organizationId?: string) {

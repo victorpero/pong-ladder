@@ -33,12 +33,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/authz", () => ({
-  requireActiveUser: async () => {
+  requireOrganizationUser: async () => {
     if (!state.session) {
       throw new Error("REDIRECT:/login");
     }
 
-    return { session: state.session, organization: { id: "org-polisen" } };
+    return { session: state.session, organization: { id: "org-polisen", slug: "polisen" } };
   }
 }));
 
@@ -125,6 +125,7 @@ const { duplicateActiveChallengeMessage } = await import("@/lib/challenge-rules"
 
 function challengeForm(challengedId: string) {
   const formData = new FormData();
+  formData.set("organizationSlug", "polisen");
   formData.set("seasonId", "season-1");
   formData.set("challengedId", challengedId);
 

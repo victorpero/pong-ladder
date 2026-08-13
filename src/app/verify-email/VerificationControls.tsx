@@ -9,19 +9,21 @@ import {
 
 const initialState: VerificationFormState = {};
 
-export function VerificationControls({ email }: { email: string }) {
+export function VerificationControls({ email, nextPath }: { email: string; nextPath: string }) {
   const [resendState, resendAction] = useFormState(resendVerificationEmail, initialState);
   const [emailState, emailAction] = useFormState(updateVerificationEmail, initialState);
 
   return (
     <div className="mt-6 grid gap-5 text-left">
       <form action={resendAction} className="grid gap-3">
+        <input type="hidden" name="next" value={nextPath} />
         <p className="text-sm text-muted">Current email: {email}</p>
         <SubmitButton label="Resend verification email" pendingLabel="Sending..." />
         <FormMessage state={resendState} />
       </form>
 
       <form action={emailAction} className="grid gap-3 border-t border-line pt-5">
+        <input type="hidden" name="next" value={nextPath} />
         <label className="grid gap-1">
           <span className="label">Use a different email</span>
           <input className="field" name="email" type="email" autoComplete="email" required />

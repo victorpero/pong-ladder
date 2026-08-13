@@ -13,7 +13,7 @@ export function hashVerificationToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function issueEmailVerification(userId: string, email: string) {
+export async function issueEmailVerification(userId: string, email: string, nextPath?: string) {
   const normalizedEmail = normalizeEmail(email);
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashVerificationToken(token);
@@ -30,6 +30,9 @@ export async function issueEmailVerification(userId: string, email: string) {
 
   const verificationUrl = new URL("/verify-email/confirm", getAppBaseUrl());
   verificationUrl.searchParams.set("token", token);
+  if (nextPath) {
+    verificationUrl.searchParams.set("next", nextPath);
+  }
   await sendVerificationEmail({ to: normalizedEmail, verificationUrl: verificationUrl.toString() });
 }
 
@@ -74,7 +77,7 @@ export async function consumeEmailVerification(token: string) {
   });
 }
 
-export async function changeUnverifiedEmail(userId: string, email: string) {
+export async function changeUnverifiedEmail(userId: string, email: string, nextPath?: string) {
   const normalizedEmail = normalizeEmail(email);
 
   const user = await prisma.$transaction(async (tx) => {
@@ -86,5 +89,5 @@ export async function changeUnverifiedEmail(userId: string, email: string) {
     return updated;
   });
 
-  await issueEmailVerification(user.id, user.email);
+  await issueEmailVerification(user.id, user.email, nextPath);
 }

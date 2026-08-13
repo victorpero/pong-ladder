@@ -3,6 +3,7 @@
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { organizationPath } from "@/lib/organization-paths";
 
 type NotificationState = {
   pendingChallenges: number;
@@ -12,7 +13,7 @@ type NotificationState = {
   }>;
 };
 
-export function NotificationBell() {
+export function NotificationBell({ organizationSlug }: { organizationSlug: string }) {
   const [notifications, setNotifications] = useState<NotificationState>({ pendingChallenges: 0, challenges: [] });
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -20,7 +21,7 @@ export function NotificationBell() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await fetch("/api/notifications", {
+      const response = await fetch(`/api/notifications?organization=${encodeURIComponent(organizationSlug)}`, {
         cache: "no-store"
       });
 
@@ -38,7 +39,7 @@ export function NotificationBell() {
         setNotifications({ pendingChallenges: 0, challenges: [] });
       }
     }
-  }, []);
+  }, [organizationSlug]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -133,7 +134,7 @@ export function NotificationBell() {
               {notifications.challenges.map((challenge) => (
                 <Link
                   key={challenge.id}
-                  href={`/challenges#${challenge.id}`}
+                  href={`${organizationPath(organizationSlug, "challenges")}#${challenge.id}`}
                   onClick={() => setIsOpen(false)}
                   className="rounded-md px-3 py-2 text-sm transition hover:bg-slate-50"
                 >

@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
-import { getDefaultOrganization } from "@/lib/organizations";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     consumeRateLimit(getClientRateLimitKey("api:session"), 120, 60 * 1000);
   } catch (error) {
@@ -21,9 +20,9 @@ export async function GET() {
     return NextResponse.json({ isAdmin: false }, { status: 401 });
   }
 
-  const organization = await getDefaultOrganization(prisma);
-  const membership = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId: sessionUser.user.id, organizationId: organization.id } },
+  const organizationSlug = request.nextUrl.searchParams.get("organization") ?? "";
+  const membership = await prisma.membership.findFirst({
+    where: { userId: sessionUser.user.id, organization: { slug: organizationSlug } },
     select: { role: true, status: true }
   });
 

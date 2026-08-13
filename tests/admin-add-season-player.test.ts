@@ -41,9 +41,9 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/authz", () => ({
-  requireAdminUser: async () => {
+  requireOrganizationAdmin: async () => {
     if (!state.session) {
-      throw new Error("REDIRECT:/login?next=/admin");
+      throw new Error("REDIRECT:/login?next=/org/polisen/admin");
     }
 
     const user = state.users.find((candidate) => candidate.id === state.session?.sub);
@@ -51,7 +51,7 @@ vi.mock("@/lib/authz", () => ({
       throw new Error("Admin access required.");
     }
 
-    return { session: state.session, organization: { id: "org-polisen" } };
+    return { session: state.session, organization: { id: "org-polisen", slug: "polisen" } };
   }
 }));
 
@@ -107,6 +107,7 @@ const { alreadyInSeasonMessage } = await import("@/lib/season-membership");
 
 function addSeasonPlayerForm(seasonId: string, userId: string) {
   const formData = new FormData();
+  formData.set("organizationSlug", "polisen");
   formData.set("seasonId", seasonId);
   formData.set("userId", userId);
 
@@ -157,7 +158,7 @@ describe("adminAddSeasonPlayer authorization", () => {
     state.session = null;
 
     await expect(adminAddSeasonPlayer({}, addSeasonPlayerForm("season-active", "player-1"))).rejects.toThrow(
-      "REDIRECT:/login?next=/admin"
+      "REDIRECT:/login?next=/org/polisen/admin"
     );
     expect(seasonPlayersFor("season-active")).toHaveLength(1);
   });
@@ -223,6 +224,7 @@ describe("adminAddSeasonPlayer", () => {
 
   it("rejects a submission without a selected player", async () => {
     const formData = new FormData();
+    formData.set("organizationSlug", "polisen");
     formData.set("seasonId", "season-active");
     formData.set("userId", "");
 

@@ -7,10 +7,12 @@ import { isSeasonJoinSubmitDisabled, shouldShowSeasonJoinPrompt } from "@/lib/se
 
 export function JoinSeasonToggle({
   joined,
-  hasActiveSeason
+  hasActiveSeason,
+  organizationSlug
 }: {
   joined: boolean;
   hasActiveSeason: boolean;
+  organizationSlug: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -20,6 +22,7 @@ export function JoinSeasonToggle({
 
   return (
     <form action={joinCurrentSeason} ref={formRef} className="rounded-lg border border-court-500 bg-court-50 p-4">
+      <input type="hidden" name="organizationSlug" value={organizationSlug} />
       <JoinSeasonCheckbox joined={joined} hasActiveSeason={hasActiveSeason} formRef={formRef} />
     </form>
   );

@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
     request.cookies.get("__Secure-better-auth.session_token")?.value;
 
   if (pathname === "/login" && session) {
-    return NextResponse.redirect(new URL("/ladder", request.url));
+    return NextResponse.redirect(new URL("/organizations", request.url));
   }
 
   if (!isPublicPath && !session) {

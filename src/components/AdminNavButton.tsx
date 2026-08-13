@@ -3,12 +3,13 @@
 import { Wrench } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { organizationPath } from "@/lib/organization-paths";
 
 type SessionState = {
   isAdmin: boolean;
 };
 
-export function AdminNavButton() {
+export function AdminNavButton({ organizationSlug }: { organizationSlug: string }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -16,7 +17,7 @@ export function AdminNavButton() {
 
     async function loadSession() {
       try {
-        const response = await fetch("/api/session", {
+        const response = await fetch(`/api/session?organization=${encodeURIComponent(organizationSlug)}`, {
           cache: "no-store"
         });
 
@@ -41,7 +42,7 @@ export function AdminNavButton() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organizationSlug]);
 
   if (!isAdmin) {
     return null;
@@ -49,7 +50,7 @@ export function AdminNavButton() {
 
   return (
     <Link
-      href="/admin"
+      href={organizationPath(organizationSlug, "admin")}
       aria-label="Admin"
       title="Admin"
       className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink transition hover:border-court-500 hover:text-court-700"
