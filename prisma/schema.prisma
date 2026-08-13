@@ -36,39 +36,67 @@ enum MembershipStatus {
   REJECTED
 }
 
+enum OrganizationJoinPolicy {
+  OPEN
+  ADMIN_APPROVAL
+  INVITE_ONLY
+  EMAIL_DOMAIN
+  ACCESS_CODE
+}
+
+enum MembershipJoinMethod {
+  LEGACY
+  ADMIN_CREATED
+  OPEN_JOIN
+  ADMIN_REQUEST
+  INVITATION
+  EMAIL_DOMAIN
+  ACCESS_CODE
+}
+
 model Organization {
-  id          String           @id @default(cuid())
-  slug        String           @unique
-  name        String
-  type        OrganizationType
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  memberships Membership[]
-  seasons     Season[]
-  teams       Team[]
+  id                  String                 @id @default(cuid())
+  slug                String                 @unique
+  name                String
+  type                OrganizationType
+  joinPolicy          OrganizationJoinPolicy @default(ADMIN_APPROVAL)
+  allowedEmailDomains String[]               @default([])
+  accessCodeHash      String?                @unique
+  accessCodeEnabled   Boolean                @default(false)
+  accessCodeUpdatedAt DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  memberships         Membership[]
+  seasons             Season[]
+  teams               Team[]
 
   @@index([name])
 }
 
 model Membership {
-  id             String           @id @default(cuid())
+  id             String               @id @default(cuid())
   userId         String
   organizationId String
-  role           MembershipRole   @default(PLAYER)
-  status         MembershipStatus @default(PENDING)
+  role           MembershipRole       @default(PLAYER)
+  status         MembershipStatus     @default(PENDING)
   displayName    String?
   teamId         String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team           Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  joinMethod     MembershipJoinMethod @default(LEGACY)
+  activatedAt    DateTime?
+  reviewedAt     DateTime?
+  reviewedById   String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team           Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
   seasonPlayers  SeasonPlayer[]
 
   @@unique([userId, organizationId])
   @@unique([id, userId, organizationId])
   @@index([organizationId, status, role])
   @@index([userId, status])
+  @@index([organizationId, joinMethod])
   @@index([teamId])
 }
 

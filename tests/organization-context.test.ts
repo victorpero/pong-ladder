@@ -52,7 +52,7 @@ vi.mock("next/navigation", () => ({
   }
 }));
 
-const { requireOrganizationAdmin, requireOrganizationUser } = await import("@/lib/authz");
+const { requireOrganizationAdmin, requireOrganizationOwner, requireOrganizationUser } = await import("@/lib/authz");
 
 beforeEach(() => {
   state.signedIn = true;
@@ -104,6 +104,16 @@ describe("organization route context", () => {
     state.membership = { ...state.membership!, role: MembershipRole.ADMIN };
     await expect(requireOrganizationAdmin("polisen")).resolves.toMatchObject({
       membership: { role: MembershipRole.ADMIN }
+    });
+  });
+
+  it("reserves join-policy and code lifecycle changes for owners", async () => {
+    state.membership = { ...state.membership!, role: MembershipRole.ADMIN };
+    await expect(requireOrganizationOwner("polisen")).rejects.toThrow("NOT_FOUND");
+
+    state.membership = { ...state.membership!, role: MembershipRole.OWNER };
+    await expect(requireOrganizationOwner("polisen")).resolves.toMatchObject({
+      membership: { role: MembershipRole.OWNER }
     });
   });
 });

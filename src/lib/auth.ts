@@ -1,9 +1,7 @@
 import { prismaAdapter } from "@better-auth/prisma-adapter";
-import { MembershipRole, MembershipStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
-import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import { findAvailableUsername } from "@/lib/username";
 
@@ -106,25 +104,6 @@ export const auth = betterAuth({
               emailVerifiedAt: user.emailVerified ? new Date() : null
             }
           };
-        },
-        after: async (user) => {
-          const organization = await getDefaultOrganization(prisma);
-
-          await prisma.membership.upsert({
-            where: {
-              userId_organizationId: {
-                userId: user.id,
-                organizationId: organization.id
-              }
-            },
-            create: {
-              userId: user.id,
-              organizationId: organization.id,
-              role: MembershipRole.PLAYER,
-              status: MembershipStatus.PENDING
-            },
-            update: {}
-          });
         }
       },
       update: {

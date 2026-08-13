@@ -1,7 +1,8 @@
 import { MembershipStatus } from "@prisma/client";
-import { Building2, Clock3, LogOut, ShieldCheck, UserCircle } from "lucide-react";
+import { Ban, Building2, Clock3, KeyRound, LogOut, ShieldCheck, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { LogoMark } from "@/components/LogoMark";
+import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
 import { logout } from "@/lib/auth-actions";
 import { requireAuthenticatedUser, verifyEmailPath } from "@/lib/authz";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
@@ -19,14 +20,23 @@ export default async function OrganizationsPage() {
 
   const memberships = await prisma.membership.findMany({
     where: {
-      userId: user.id,
-      status: { in: [MembershipStatus.ACTIVE, MembershipStatus.PENDING] }
+      userId: user.id
     },
     include: { organization: true },
     orderBy: [{ organization: { name: "asc" } }]
   });
   const activeMemberships = memberships.filter((membership) => membership.status === MembershipStatus.ACTIVE);
   const pendingMemberships = memberships.filter((membership) => membership.status === MembershipStatus.PENDING);
+  const blockedMemberships = memberships.filter(
+    (membership) =>
+      membership.status === MembershipStatus.REJECTED || membership.status === MembershipStatus.SUSPENDED
+  );
+  const membershipOrganizationIds = new Set(memberships.map((membership) => membership.organizationId));
+  const availableOrganizations = await prisma.organization.findMany({
+    where: { id: { notIn: [...membershipOrganizationIds] } },
+    select: { id: true, name: true, type: true, joinPolicy: true },
+    orderBy: { name: "asc" }
+  });
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -72,6 +82,23 @@ export default async function OrganizationsPage() {
           </p>
         </section>
 
+        <section className="section-band mb-8 max-w-3xl">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-court-50 text-court-700">
+              <KeyRound aria-hidden="true" size={20} />
+            </span>
+            <div>
+              <h2 className="text-xl font-black">Join with an organization code</h2>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                Enter the code shared by your organization. Valid codes add your verified account immediately.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5">
+            <OrganizationAccessCodeForm />
+          </div>
+        </section>
+
         {activeMemberships.length > 0 ? (
           <section aria-labelledby="active-organizations-heading">
             <h2 id="active-organizations-heading" className="sr-only">
@@ -109,10 +136,7 @@ export default async function OrganizationsPage() {
           <section className="section-band max-w-2xl">
             <Building2 className="text-court-700" aria-hidden="true" size={28} />
             <h2 className="mt-4 text-xl font-black">You have no active organizations</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Ask an organization owner for an invitation or organization code. Once you join, the organization will
-              appear here.
-            </p>
+            <p className="mt-2 text-sm leading-6 text-muted">Use an invitation, organization code, or join option below.</p>
           </section>
         )}
 
@@ -128,13 +152,108 @@ export default async function OrganizationsPage() {
               {pendingMemberships.map((membership) => (
                 <article key={membership.id} className="rounded-lg border border-line bg-white p-4">
                   <p className="font-black">{membership.organization.name}</p>
-                  <p className="mt-1 text-sm font-semibold text-muted">Waiting for organization approval</p>
+                  <p className="mt-1 text-sm font-semibold text-muted">
+                    {getPendingMembershipMessage(membership.organization.joinPolicy)}
+                  </p>
+                  {membership.organization.joinPolicy === "OPEN" ||
+                  membership.organization.joinPolicy === "EMAIL_DOMAIN" ? (
+                    <OrganizationPolicyJoinForm
+                      organizationId={membership.organization.id}
+                      label={membership.organization.joinPolicy === "OPEN" ? "Activate access" : "Verify domain"}
+                    />
+                  ) : null}
                 </article>
               ))}
+            </div>
+          </section>
+        ) : null}
+
+        {blockedMemberships.length > 0 ? (
+          <section className="mt-8" aria-labelledby="unavailable-organizations-heading">
+            <div className="mb-3 flex items-center gap-2">
+              <Ban aria-hidden="true" className="text-muted" size={18} />
+              <h2 id="unavailable-organizations-heading" className="text-lg font-black">
+                Unavailable access
+              </h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {blockedMemberships.map((membership) => (
+                <article key={membership.id} className="rounded-lg border border-line bg-white p-4">
+                  <p className="font-black">{membership.organization.name}</p>
+                  <p className="mt-1 text-sm font-semibold text-muted">
+                    {membership.status === MembershipStatus.SUSPENDED ? "Access suspended" : "Join request rejected"}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {availableOrganizations.length > 0 ? (
+          <section className="mt-8" aria-labelledby="available-organizations-heading">
+            <div className="mb-3">
+              <p className="label">Discover</p>
+              <h2 id="available-organizations-heading" className="mt-1 text-2xl font-black">
+                Available organizations
+              </h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {availableOrganizations.map((organization) => {
+                const joinOption = getJoinOption(organization.joinPolicy);
+
+                return (
+                  <article key={organization.id} className="rounded-xl border border-line bg-white p-5">
+                    <Building2 aria-hidden="true" className="text-court-700" size={24} />
+                    <h3 className="mt-4 text-lg font-black">{organization.name}</h3>
+                    <p className="mt-1 text-sm font-semibold capitalize text-muted">
+                      {organization.type.toLowerCase().replaceAll("_", " ")}
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-muted">{joinOption.description}</p>
+                    {joinOption.buttonLabel ? (
+                      <OrganizationPolicyJoinForm
+                        organizationId={organization.id}
+                        label={joinOption.buttonLabel}
+                      />
+                    ) : null}
+                  </article>
+                );
+              })}
             </div>
           </section>
         ) : null}
       </div>
     </main>
   );
+}
+
+function getJoinOption(policy: string) {
+  switch (policy) {
+    case "OPEN":
+      return { description: "Open to any player with a verified email.", buttonLabel: "Join now" };
+    case "ADMIN_APPROVAL":
+      return { description: "An administrator reviews new membership requests.", buttonLabel: "Request access" };
+    case "EMAIL_DOMAIN":
+      return { description: "Your verified email must match an allowed organization domain.", buttonLabel: "Verify domain" };
+    case "INVITE_ONLY":
+      return { description: "A personal invitation link is required.", buttonLabel: null };
+    case "ACCESS_CODE":
+      return { description: "Enter the organization code above to join.", buttonLabel: null };
+    default:
+      return { description: "Joining is not currently available.", buttonLabel: null };
+  }
+}
+
+function getPendingMembershipMessage(policy: string) {
+  switch (policy) {
+    case "ACCESS_CODE":
+      return "Enter the organization code above to activate access";
+    case "OPEN":
+      return "This organization is now open; activate your access below";
+    case "EMAIL_DOMAIN":
+      return "Verify your email domain again to activate access";
+    case "INVITE_ONLY":
+      return "A valid invitation is required to activate access";
+    default:
+      return "Waiting for organization approval";
+  }
 }

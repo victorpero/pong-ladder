@@ -95,7 +95,7 @@ export function AuthForms({
             <input className="field" name="password" type="password" autoComplete="new-password" minLength={8} required />
           </label>
           <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-            New accounts need admin approval before they can join a season or create challenges.
+            Verify your email, then join an organization using its code, invitation, or configured join policy.
           </p>
           {createState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{createState.error}</p> : null}
           <SubmitButton label="Create account" pendingLabel="Creating..." />
