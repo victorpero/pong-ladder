@@ -1,15 +1,13 @@
-import { ChallengeStatus, MembershipRole, MembershipStatus } from "@prisma/client";
+import { ChallengeStatus, MembershipRole, MembershipStatus, OrganizationJoinPolicy } from "@prisma/client";
+import { AddOrganizationMemberForm } from "@/components/AddOrganizationMemberForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { OrganizationPolicySettings } from "@/components/OrganizationPolicySettings";
 import {
-  adminApproveUser,
   adminCancelOpenChallengesForPlayer,
   adminDeleteChallenge,
   adminDeleteMatch,
-  adminDeletePlayer,
-  adminDeclinePendingUser,
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
 import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
@@ -18,6 +16,16 @@ import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
 import { compactDate } from "@/lib/format";
 import { matchFeedOrderBy } from "@/lib/match-feed";
+import {
+  approveOrganizationMembership,
+  changeOrganizationMembershipRole,
+  reactivateOrganizationMembership,
+  rejectOrganizationMembership,
+  removeOrganizationMembership,
+  suspendOrganizationMembership,
+  transferOrganizationOwnership
+} from "@/lib/membership-admin-actions";
+import { canManageMembership } from "@/lib/membership-administration";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 import { selectSeasonJoinCandidates } from "@/lib/season-membership";
@@ -30,17 +38,20 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
     organizationPath(organizationSlug, "admin")
   );
   const season = await getActiveSeason(organization.id);
-  const [ladder, activeMemberships, pendingMemberships, matches, challenges, openChallenges] = await Promise.all([
+  const [
+    ladder,
+    organizationMemberships,
+    matches,
+    challenges,
+    openChallenges,
+    availableGlobalUsers,
+    auditEvents
+  ] = await Promise.all([
     getLadder(season.id),
     prisma.membership.findMany({
-      where: { organizationId: organization.id, status: MembershipStatus.ACTIVE },
+      where: { organizationId: organization.id },
       include: { user: true, team: true },
-      orderBy: [{ role: "asc" }, { user: { username: "asc" } }]
-    }),
-    prisma.membership.findMany({
-      where: { organizationId: organization.id, status: MembershipStatus.PENDING },
-      include: { user: true, team: true },
-      orderBy: { createdAt: "asc" }
+      orderBy: [{ status: "asc" }, { role: "asc" }, { user: { username: "asc" } }]
     }),
     prisma.match.findMany({
       where: { seasonId: season.id },
@@ -59,8 +70,32 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
         match: null
       },
       select: { challengerId: true, challengedId: true }
+    }),
+    prisma.user.findMany({
+      where: {
+        emailVerifiedAt: { not: null },
+        memberships: { none: { organizationId: organization.id } }
+      },
+      select: { id: true, username: true, fullName: true, email: true },
+      orderBy: { username: "asc" },
+      take: 100
+    }),
+    prisma.membershipAuditEvent.findMany({
+      where: { organizationId: organization.id },
+      include: {
+        actorUser: { select: { id: true, username: true } },
+        subjectUser: { select: { id: true, username: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 30
     })
   ]);
+  const activeMemberships = organizationMemberships.filter(
+    (organizationMembership) => organizationMembership.status === MembershipStatus.ACTIVE
+  );
+  const pendingMemberships = organizationMemberships.filter(
+    (organizationMembership) => organizationMembership.status === MembershipStatus.PENDING
+  );
   const users = activeMemberships.map((membership) => ({
     ...membership.user,
     team: membership.team,
@@ -76,6 +111,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
     uniqueUsers([
       ...users,
       ...pendingAccounts,
+      ...organizationMemberships.map((organizationMembership) => organizationMembership.user),
       ...ladder.map((entry) => entry.user),
       ...matches.flatMap((match) => [match.winner, match.loser]),
       ...challenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
@@ -90,6 +126,11 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
     label: `${publicNames.get(user.id) ?? user.username} (${user.username})`,
     detail: getTeamDisplayName(user)
   }));
+  const organizationJoinCandidates = availableGlobalUsers.map((candidate) => ({
+    id: candidate.id,
+    label: `${candidate.fullName} (${candidate.username})`,
+    detail: candidate.email
+  }));
 
   return (
     <main className="page-shell">
@@ -100,7 +141,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
           <p className="mt-2 text-sm text-muted">Season {seasonLabel}</p>
         </div>
         <AdminStat label="Season players" value={ladder.length} />
-        <AdminStat label="Pending accounts" value={pendingAccounts.length} />
+        <AdminStat label="Organization members" value={organizationMemberships.length} />
         <AdminStat label="Matches" value={matches.length} />
       </section>
 
@@ -115,6 +156,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
           />
         ) : null}
 
+        {organization.joinPolicy === OrganizationJoinPolicy.ADMIN_APPROVAL ? (
         <section className="section-band">
           <div className="mb-4">
             <p className="label">Approvals</p>
@@ -135,14 +177,14 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
-                      <form action={adminApproveUser}>
+                      <form action={approveOrganizationMembership}>
                         <input type="hidden" name="organizationSlug" value={organizationSlug} />
                         <input type="hidden" name="userId" value={user.id} />
                         <button className="button" type="submit">
                           Approve
                         </button>
                       </form>
-                      <form action={adminDeclinePendingUser}>
+                      <form action={rejectOrganizationMembership}>
                         <input type="hidden" name="organizationSlug" value={organizationSlug} />
                         <input type="hidden" name="userId" value={user.id} />
                         <ConfirmSubmitButton
@@ -158,6 +200,22 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
               ))
             )}
           </div>
+        </section>
+        ) : null}
+
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Organization membership</p>
+            <h2 className="mt-1 text-2xl font-black">Add an existing account</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Add a verified Pong Ladder account to this organization. Season membership remains a separate step.
+            </p>
+          </div>
+          {organizationJoinCandidates.length === 0 ? (
+            <EmptyState title="No accounts available" body="Every verified account is already linked to this organization." />
+          ) : (
+            <AddOrganizationMemberForm organizationSlug={organizationSlug} users={organizationJoinCandidates} />
+          )}
         </section>
 
         <section className="section-band">
@@ -218,57 +276,162 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Accounts</p>
-            <h2 className="mt-1 text-2xl font-black">All players</h2>
+            <p className="label">Organization membership</p>
+            <h2 className="mt-1 text-2xl font-black">Member administration</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Membership access is independent of season participation. Suspending or removing access cancels open
+              challenges but preserves completed matches and historical standings.
+            </p>
           </div>
           <div className="grid gap-3">
-            {users.map((user) => {
+            {organizationMemberships.map((organizationMembership) => {
+              const user = organizationMembership.user;
               const openChallengeCount = openChallengeCounts.get(user.id) ?? 0;
+              const actorCanManage = canManageMembership(membership.role, organizationMembership.role);
+              const canChangeRole =
+                membership.role === MembershipRole.OWNER &&
+                organizationMembership.status === MembershipStatus.ACTIVE &&
+                organizationMembership.role !== MembershipRole.OWNER;
+              const canTransferOwnership =
+                canChangeRole && organizationMembership.userId !== membership.userId;
 
               return (
-                <article key={user.id} className="rounded-lg border border-line bg-white p-4">
+                <article key={organizationMembership.id} className="rounded-lg border border-line bg-white p-4">
                   <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
                     <div>
-                      <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
-                      <p className="text-sm text-muted">
-                        {getTeamDisplayName(user)}
-                        {user.membershipRole === MembershipRole.OWNER
-                          ? " · owner"
-                          : user.membershipRole === MembershipRole.ADMIN
-                            ? " · admin"
-                            : ""}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
+                        <span className={membershipStatusClassName(organizationMembership.status)}>
+                          {membershipStatusLabel(organizationMembership.status)}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black capitalize text-muted">
+                          {organizationMembership.role.toLowerCase()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted">
+                        {user.email} · joined via {joinMethodLabel(organizationMembership.joinMethod)}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-muted">
-                        {user.username} · {openChallengeCount} open challenge{openChallengeCount === 1 ? "" : "s"}
+                        {user.username} · {getTeamDisplayName({ ...user, team: organizationMembership.team })} ·{" "}
+                        {openChallengeCount} open challenge{openChallengeCount === 1 ? "" : "s"}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
-                      <form action={adminCancelOpenChallengesForPlayer}>
-                        <input type="hidden" name="organizationSlug" value={organizationSlug} />
-                        <input type="hidden" name="userId" value={user.id} />
-                        <ConfirmSubmitButton
-                          className="button-secondary"
-                          confirmation="This will remove all pending or accepted challenges involving this player."
-                          disabled={openChallengeCount === 0}
-                        >
-                          Cancel open challenges
-                        </ConfirmSubmitButton>
-                      </form>
-                      <form action={adminDeletePlayer}>
-                        <input type="hidden" name="organizationSlug" value={organizationSlug} />
-                        <input type="hidden" name="userId" value={user.id} />
-                        <ConfirmSubmitButton
-                          className="button-danger"
-                          confirmation="This will suspend the player's organization membership and remove current-season participation."
-                        >
-                          Suspend player
-                        </ConfirmSubmitButton>
-                      </form>
+                      {organizationMembership.status === MembershipStatus.ACTIVE && actorCanManage ? (
+                        <>
+                          <form action={adminCancelOpenChallengesForPlayer}>
+                            <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                            <input type="hidden" name="userId" value={user.id} />
+                            <ConfirmSubmitButton
+                              className="button-secondary"
+                              confirmation="This will remove all pending or accepted challenges involving this player."
+                              disabled={openChallengeCount === 0}
+                            >
+                              Cancel open challenges
+                            </ConfirmSubmitButton>
+                          </form>
+                          <form action={suspendOrganizationMembership}>
+                            <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                            <input type="hidden" name="userId" value={user.id} />
+                            <ConfirmSubmitButton
+                              className="button-secondary"
+                              confirmation="This suspends organization access and cancels open challenges. Completed matches and season history are preserved."
+                            >
+                              Suspend
+                            </ConfirmSubmitButton>
+                          </form>
+                          <form action={removeOrganizationMembership}>
+                            <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                            <input type="hidden" name="userId" value={user.id} />
+                            <ConfirmSubmitButton
+                              className="button-danger"
+                              confirmation="This removes organization access and cancels open challenges. Completed matches and season history are preserved."
+                            >
+                              Remove
+                            </ConfirmSubmitButton>
+                          </form>
+                        </>
+                      ) : null}
+                      {(organizationMembership.status === MembershipStatus.SUSPENDED ||
+                        organizationMembership.status === MembershipStatus.REJECTED ||
+                        organizationMembership.status === MembershipStatus.REMOVED) &&
+                      actorCanManage ? (
+                        <form action={reactivateOrganizationMembership}>
+                          <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                          <input type="hidden" name="userId" value={user.id} />
+                          <ConfirmSubmitButton
+                            className="button"
+                            confirmation="This restores active organization access. It does not add the player to the current season."
+                          >
+                            Reactivate
+                          </ConfirmSubmitButton>
+                        </form>
+                      ) : null}
+                      {canChangeRole ? (
+                        <form action={changeOrganizationMembershipRole}>
+                          <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                          <input type="hidden" name="userId" value={user.id} />
+                          <input
+                            type="hidden"
+                            name="role"
+                            value={
+                              organizationMembership.role === MembershipRole.ADMIN
+                                ? MembershipRole.PLAYER
+                                : MembershipRole.ADMIN
+                            }
+                          />
+                          <ConfirmSubmitButton
+                            className="button-secondary"
+                            confirmation={
+                              organizationMembership.role === MembershipRole.ADMIN
+                                ? "This revokes organization administrator access."
+                                : "This grants organization administrator access."
+                            }
+                          >
+                            {organizationMembership.role === MembershipRole.ADMIN ? "Make player" : "Make admin"}
+                          </ConfirmSubmitButton>
+                        </form>
+                      ) : null}
+                      {canTransferOwnership ? (
+                        <form action={transferOrganizationOwnership}>
+                          <input type="hidden" name="organizationSlug" value={organizationSlug} />
+                          <input type="hidden" name="userId" value={user.id} />
+                          <ConfirmSubmitButton
+                            className="button-danger"
+                            confirmation="This member becomes the organization owner and your role changes to administrator."
+                          >
+                            Transfer ownership
+                          </ConfirmSubmitButton>
+                        </form>
+                      ) : null}
                     </div>
                   </div>
                 </article>
               );
             })}
+          </div>
+        </section>
+
+        <section className="section-band">
+          <div className="mb-4">
+            <p className="label">Audit</p>
+            <h2 className="mt-1 text-2xl font-black">Membership activity</h2>
+          </div>
+          <div className="grid gap-3">
+            {auditEvents.length === 0 ? (
+              <EmptyState title="No membership changes" body="Administrative membership changes will appear here." />
+            ) : (
+              auditEvents.map((event) => (
+                <article key={event.id} className="rounded-lg border border-line bg-white p-4">
+                  <p className="font-black">
+                    {event.subjectUser.username} · {auditActionLabel(event.action)}
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    by {event.actorUser?.username ?? "system"} · {compactDate(event.createdAt)}
+                  </p>
+                </article>
+              ))
+            )}
           </div>
         </section>
 
@@ -373,4 +536,38 @@ function getChallengeCounts(challenges: Array<{ challengerId: string; challenged
   }
 
   return counts;
+}
+
+function membershipStatusLabel(status: MembershipStatus) {
+  switch (status) {
+    case MembershipStatus.ACTIVE:
+      return "Active";
+    case MembershipStatus.PENDING:
+      return "Pending";
+    case MembershipStatus.SUSPENDED:
+      return "Suspended";
+    case MembershipStatus.REJECTED:
+      return "Rejected";
+    case MembershipStatus.REMOVED:
+      return "Removed";
+  }
+}
+
+function membershipStatusClassName(status: MembershipStatus) {
+  const color =
+    status === MembershipStatus.ACTIVE
+      ? "bg-green-50 text-success"
+      : status === MembershipStatus.PENDING
+        ? "bg-amber-50 text-amber-800"
+        : "bg-red-50 text-danger";
+
+  return `rounded-full px-2.5 py-1 text-xs font-black ${color}`;
+}
+
+function joinMethodLabel(joinMethod: string) {
+  return joinMethod.toLowerCase().replaceAll("_", " ");
+}
+
+function auditActionLabel(action: string) {
+  return action.toLowerCase().replaceAll("_", " ");
 }

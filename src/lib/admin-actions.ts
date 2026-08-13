@@ -114,39 +114,6 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
   await recalculateRanks(tx, seasonId);
 }
 
-export async function adminApproveUser(formData: FormData) {
-  const { organization, session } = await requireAdmin(formData);
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.membership.updateMany({
-    where: {
-      userId,
-      organizationId: organization.id,
-      status: MembershipStatus.PENDING
-    },
-    data: {
-      status: MembershipStatus.ACTIVE,
-      activatedAt: new Date(),
-      reviewedAt: new Date(),
-      reviewedById: session.sub
-    }
-  });
-
-  refreshAdmin(organization.slug);
-}
-
-export async function adminDeclinePendingUser(formData: FormData) {
-  const { organization, session } = await requireAdmin(formData);
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.membership.updateMany({
-    where: { userId, organizationId: organization.id, status: MembershipStatus.PENDING },
-    data: { status: MembershipStatus.REJECTED, reviewedAt: new Date(), reviewedById: session.sub }
-  });
-
-  refreshAdmin(organization.slug);
-}
-
 export async function adminAddSeasonPlayer(_state: AdminFormState, formData: FormData): Promise<AdminFormState> {
   const { organization } = await requireAdmin(formData);
 
@@ -272,24 +239,6 @@ export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
 
     await tx.challenge.deleteMany({
       where: { organizationId: organization.id, ...openPlayerChallengeWhere(user.id) }
-    });
-  });
-
-  refreshAdmin(organization.slug);
-}
-
-export async function adminDeletePlayer(formData: FormData) {
-  const { organization } = await requireAdmin(formData);
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.$transaction(async (tx) => {
-    await tx.challenge.deleteMany({
-      where: { organizationId: organization.id, ...openPlayerChallengeWhere(userId) }
-    });
-
-    await tx.membership.updateMany({
-      where: { userId, organizationId: organization.id, status: MembershipStatus.ACTIVE },
-      data: { status: MembershipStatus.SUSPENDED }
     });
   });
 

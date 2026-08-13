@@ -3,11 +3,9 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { organizationPath } from "@/lib/organization-paths";
-import { getDefaultOrganization } from "@/lib/organizations";
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
 
-export const awaitingApprovalPath = "/awaiting-approval";
 export const verifyEmailPath = "/verify-email";
 
 export class OrganizationAccessError extends Error {
@@ -100,33 +98,6 @@ export async function requireAuthenticatedUser(nextPath: string) {
   return sessionUser;
 }
 
-export async function requireActiveUser(nextPath: string, organizationId?: string) {
-  const sessionUser = await requireAuthenticatedUser(nextPath);
-
-  if (!sessionUser.user.emailVerifiedAt) {
-    redirect(`${verifyEmailPath}?next=${encodeURIComponent(nextPath)}`);
-  }
-
-  const organization = organizationId
-    ? await prisma.organization.findUnique({ where: { id: organizationId } })
-    : await getDefaultOrganization(prisma);
-
-  if (!organization) {
-    throw new OrganizationAccessError();
-  }
-
-  try {
-    const membership = await requireActiveMembership(sessionUser.user.id, organization.id);
-    return { ...sessionUser, organization, membership };
-  } catch (error) {
-    if (error instanceof OrganizationAccessError) {
-      redirect(awaitingApprovalPath);
-    }
-
-    throw error;
-  }
-}
-
 export async function requireOrganizationUser(organizationSlug: string, nextPath = organizationPath(organizationSlug)) {
   const sessionUser = await requireAuthenticatedUser(nextPath);
 
@@ -174,22 +145,4 @@ export async function requireOrganizationOwner(
   }
 
   return context;
-}
-
-export async function requireAdminUser(organizationId?: string) {
-  const sessionUser = await requireAuthenticatedUser("/admin");
-
-  if (!sessionUser.user.emailVerifiedAt) {
-    redirect(`${verifyEmailPath}?next=${encodeURIComponent("/admin")}`);
-  }
-  const organization = organizationId
-    ? await prisma.organization.findUnique({ where: { id: organizationId } })
-    : await getDefaultOrganization(prisma);
-
-  if (!organization) {
-    throw new OrganizationAccessError();
-  }
-
-  const membership = await requireOrgAdmin(sessionUser.user.id, organization.id);
-  return { ...sessionUser, organization, membership };
 }
