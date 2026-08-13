@@ -2,12 +2,14 @@ import Link from "next/link";
 import { VerificationControls } from "@/app/verify-email/VerificationControls";
 import { LogoMark } from "@/components/LogoMark";
 import { getSessionUser } from "@/lib/authz";
+import { postAuthenticationPath } from "@/lib/organization-paths";
 
 export const dynamic = "force-dynamic";
 
 function safeNextPath(value?: string | string[]) {
   const path = Array.isArray(value) ? value[0] : value;
-  return path?.startsWith("/") && !path.startsWith("//") ? path : "/ladder";
+  const safePath = path?.startsWith("/") && !path.startsWith("//") ? path : null;
+  return postAuthenticationPath(safePath);
 }
 
 export default async function VerifyEmailPage({
@@ -60,7 +62,7 @@ export default async function VerifyEmailPage({
                 </p>
               ) : null}
               {sessionUser ? (
-                <VerificationControls email={sessionUser.user.email} />
+                <VerificationControls email={sessionUser.user.email} nextPath={nextPath} />
               ) : (
                 <Link className="button mt-6 inline-flex" href={`/login?next=${encodeURIComponent(nextPath)}`}>
                   Log in to resend

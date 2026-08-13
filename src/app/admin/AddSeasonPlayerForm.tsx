@@ -6,11 +6,20 @@ import { adminAddSeasonPlayer, type AdminFormState } from "@/lib/admin-actions";
 
 const initialState: AdminFormState = {};
 
-export function AddSeasonPlayerForm({ seasonId, players }: { seasonId: string; players: PlayerOption[] }) {
+export function AddSeasonPlayerForm({
+  seasonId,
+  players,
+  organizationSlug
+}: {
+  seasonId: string;
+  players: PlayerOption[];
+  organizationSlug: string;
+}) {
   const [state, action] = useFormState(adminAddSeasonPlayer, initialState);
 
   return (
     <form action={action} className="grid gap-3">
+      <input type="hidden" name="organizationSlug" value={organizationSlug} />
       <input type="hidden" name="seasonId" value={seasonId} />
       <PlayerCombobox name="userId" label="Player" players={players} disabled={players.length === 0} />
       {state.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{state.error}</p> : null}

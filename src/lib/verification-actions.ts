@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/authz";
 import { changeUnverifiedEmail, issueEmailVerification } from "@/lib/email-verification";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
+import { postAuthenticationPath } from "@/lib/organization-paths";
 
 export type VerificationFormState = {
   error?: string;
@@ -43,7 +44,10 @@ function actionError(error: unknown): VerificationFormState {
   return { error: "The email could not be sent. Please try again." };
 }
 
-export async function resendVerificationEmail(_state: VerificationFormState): Promise<VerificationFormState> {
+export async function resendVerificationEmail(
+  _state: VerificationFormState,
+  formData: FormData
+): Promise<VerificationFormState> {
   try {
     const user = await requireVerificationUser();
 
@@ -53,7 +57,7 @@ export async function resendVerificationEmail(_state: VerificationFormState): Pr
 
     consumeRateLimit(getClientRateLimitKey("auth:verify:resend", user.id), 3, 15 * 60 * 1000);
     consumeRateLimit(getClientRateLimitKey("auth:verify:email", user.email), 5, 60 * 60 * 1000);
-    await issueEmailVerification(user.id, user.email);
+    await issueEmailVerification(user.id, user.email, postAuthenticationPath(formData.get("next")?.toString()));
     return { success: "A fresh verification link has been sent." };
   } catch (error) {
     return actionError(error);
@@ -75,7 +79,7 @@ export async function updateVerificationEmail(
       return { error: "Enter a different email address." };
     }
 
-    await changeUnverifiedEmail(user.id, email);
+    await changeUnverifiedEmail(user.id, email, postAuthenticationPath(formData.get("next")?.toString()));
     return { success: `Verification email sent to ${email}.` };
   } catch (error) {
     return actionError(error);

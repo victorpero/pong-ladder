@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { GoogleAuthButton } from "@/components/GoogleAuthButton";
 import { createAccount, login, type AuthFormState } from "@/lib/auth-actions";
+import { postAuthenticationPath } from "@/lib/organization-paths";
 
 const initialState: AuthFormState = {};
 
@@ -45,7 +46,7 @@ export function AuthForms({
 
       {googleEnabled ? (
         <div className="mt-5 grid gap-4">
-          <GoogleAuthButton callbackURL={nextPath} />
+          <GoogleAuthButton callbackURL={postAuthenticationPath(nextPath)} />
           <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-muted">
             <span className="h-px flex-1 bg-line" />
             or use a password

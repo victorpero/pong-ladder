@@ -1,14 +1,14 @@
 "use server";
 
-import { MembershipStatus, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { awaitingApprovalPath, getSessionUser, verifyEmailPath } from "@/lib/authz";
+import { getSessionUser, verifyEmailPath } from "@/lib/authz";
 import { issueEmailVerification } from "@/lib/email-verification";
-import { getDefaultOrganization } from "@/lib/organizations";
+import { organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -46,7 +46,8 @@ function getValue(formData: FormData, key: string) {
 
 function getSafeRedirectPath(formData: FormData) {
   const nextPath = getValue(formData, "next");
-  return nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/ladder";
+  const safePath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : organizationsPath;
+  return postAuthenticationPath(safePath);
 }
 
 function authError(error: unknown): AuthFormState {
@@ -75,13 +76,7 @@ async function postSignInPath(userId: string, requestedPath: string) {
     return `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
   }
 
-  const organization = await getDefaultOrganization(prisma);
-  const membership = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId: organization.id } },
-    select: { status: true }
-  });
-
-  return membership?.status === MembershipStatus.ACTIVE ? requestedPath : awaitingApprovalPath;
+  return postAuthenticationPath(requestedPath);
 }
 
 export async function login(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -123,7 +118,8 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 }
 
 export async function createAccount(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  let destination = verifyEmailPath;
+  const requestedPath = getSafeRedirectPath(formData);
+  let destination = `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:create-account"), 5, 60 * 60 * 1000);
@@ -146,9 +142,9 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
     });
 
     try {
-      await issueEmailVerification(result.user.id, result.user.email);
+      await issueEmailVerification(result.user.id, result.user.email, requestedPath);
     } catch {
-      destination = `${verifyEmailPath}?delivery=failed`;
+      destination = `${verifyEmailPath}?delivery=failed&next=${encodeURIComponent(requestedPath)}`;
     }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

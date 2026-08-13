@@ -4,7 +4,7 @@ import { ChallengeStatus, MembershipRole, MembershipStatus, Prisma } from "@pris
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireActiveUser, requireAdminUser } from "@/lib/authz";
+import { requireOrganizationAdmin, requireOrganizationUser } from "@/lib/authz";
 import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
@@ -18,6 +18,7 @@ import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
+import { organizationPath } from "@/lib/organization-paths";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -31,6 +32,7 @@ const teamSchema = z.object({
 });
 
 const idSchema = z.string().min(1);
+const organizationSlugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const matchSchema = z.object({
   seasonId: idSchema,
@@ -54,13 +56,13 @@ function maybeValue(formData: FormData, key: string) {
   return raw && raw.length > 0 ? raw : undefined;
 }
 
-function refreshApp() {
-  revalidatePath("/ladder");
-  revalidatePath("/players");
-  revalidatePath("/teams");
-  revalidatePath("/matches");
-  revalidatePath("/challenges");
-  revalidatePath("/account");
+function refreshApp(organizationSlug: string) {
+  revalidatePath(organizationPath(organizationSlug, "ladder"));
+  revalidatePath(organizationPath(organizationSlug, "players"));
+  revalidatePath(organizationPath(organizationSlug, "teams"));
+  revalidatePath(organizationPath(organizationSlug, "matches"));
+  revalidatePath(organizationPath(organizationSlug, "challenges"));
+  revalidatePath(organizationPath(organizationSlug, "account"));
 }
 
 async function getIsAdmin(userId: string, organizationId: string) {
@@ -75,12 +77,22 @@ async function getIsAdmin(userId: string, organizationId: string) {
   );
 }
 
-async function requireAdmin() {
-  return requireAdminUser();
+function organizationSlug(formData: FormData) {
+  return organizationSlugSchema.parse(value(formData, "organizationSlug"));
+}
+
+async function requireActionUser(formData: FormData, section: string) {
+  const slug = organizationSlug(formData);
+  return requireOrganizationUser(slug, organizationPath(slug, section));
+}
+
+async function requireAdmin(formData: FormData) {
+  const slug = organizationSlug(formData);
+  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
 }
 
 export async function createPlayer(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
 
   const parsed = playerSchema.parse({
     username: value(formData, "username"),
@@ -125,11 +137,11 @@ export async function createPlayer(formData: FormData) {
 
   await issueEmailVerification(user.id, user.email);
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function joinSeason(formData: FormData) {
-  const { organization } = await requireAdmin();
+  const { organization } = await requireAdmin(formData);
 
   const userId = idSchema.parse(value(formData, "userId"));
 
@@ -146,21 +158,21 @@ export async function joinSeason(formData: FormData) {
     await joinActiveSeasonForUser(tx, organization.id, userId);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
-export async function joinCurrentSeason() {
-  const { session, organization } = await requireActiveUser("/ladder");
+export async function joinCurrentSeason(formData: FormData) {
+  const { session, organization } = await requireActionUser(formData, "ladder");
 
   await prisma.$transaction(async (tx) => {
     await joinActiveSeasonForUser(tx, organization.id, session.sub);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function createTeam(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/teams");
+  const { session, organization } = await requireActionUser(formData, "teams");
 
   const parsed = teamSchema.parse({
     name: value(formData, "name")
@@ -185,11 +197,11 @@ export async function createTeam(formData: FormData) {
     throw error;
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function joinTeam(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/teams");
+  const { session, organization } = await requireActionUser(formData, "teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -201,22 +213,22 @@ export async function joinTeam(formData: FormData) {
     data: { teamId: team.id }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
-export async function leaveTeam() {
-  const { session, organization } = await requireActiveUser("/teams");
+export async function leaveTeam(formData: FormData) {
+  const { session, organization } = await requireActionUser(formData, "teams");
 
   await prisma.membership.update({
     where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
     data: { teamId: null }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function deleteTeam(formData: FormData) {
-  const { organization } = await requireActiveUser("/teams");
+  const { organization } = await requireActionUser(formData, "teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
@@ -233,11 +245,11 @@ export async function deleteTeam(formData: FormData) {
     if (deleted.count === 0) throw new Error("That team does not exist.");
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function createChallenge(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
   consumeRateLimit(getClientRateLimitKey("challenge:create", session.sub), 20, 5 * 60 * 1000);
 
   const seasonId = idSchema.parse(value(formData, "seasonId"));
@@ -318,11 +330,11 @@ export async function createChallenge(formData: FormData) {
     throw error;
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function acceptChallenge(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -340,11 +352,11 @@ export async function acceptChallenge(formData: FormData) {
     throw new Error("Only the challenged player can accept a pending challenge.");
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function declineChallenge(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -405,11 +417,11 @@ export async function declineChallenge(formData: FormData) {
     }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function registerMatchResult(formData: FormData) {
-  const { session, organization } = await requireActiveUser("/matches");
+  const { session, organization } = await requireActionUser(formData, "matches");
   consumeRateLimit(getClientRateLimitKey("match:register", session.sub), 20, 5 * 60 * 1000);
 
   const parsed = matchSchema.parse({
@@ -444,7 +456,7 @@ export async function registerMatchResult(formData: FormData) {
     await registerMatchInTransaction(tx, parsed);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {

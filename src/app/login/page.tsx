@@ -1,6 +1,7 @@
 import { AuthForms } from "@/app/login/AuthForms";
 import { LogoMark } from "@/components/LogoMark";
 import { googleAuthEnabled } from "@/lib/auth";
+import { organizationsPath } from "@/lib/organization-paths";
 
 function getSafeNextPath(next?: string | string[]) {
   const value = Array.isArray(next) ? next[0] : next;
@@ -9,7 +10,7 @@ function getSafeNextPath(next?: string | string[]) {
     return value;
   }
 
-  return "/ladder";
+  return organizationsPath;
 }
 
 export default function LoginPage({
