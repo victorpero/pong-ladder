@@ -5,6 +5,11 @@ import { LogoMark } from "@/components/LogoMark";
 import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
 import { logout } from "@/lib/auth-actions";
 import { requireAuthenticatedUser, verifyEmailPath } from "@/lib/authz";
+import {
+  canDisplayPendingOrganization,
+  canDisplayUnavailableOrganization,
+  discoverableOrganizationJoinPolicies
+} from "@/lib/organization-discovery";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
@@ -26,14 +31,28 @@ export default async function OrganizationsPage() {
     orderBy: [{ organization: { name: "asc" } }]
   });
   const activeMemberships = memberships.filter((membership) => membership.status === MembershipStatus.ACTIVE);
-  const pendingMemberships = memberships.filter((membership) => membership.status === MembershipStatus.PENDING);
+  const pendingMemberships = memberships.filter(
+    (membership) =>
+      membership.status === MembershipStatus.PENDING &&
+      canDisplayPendingOrganization(membership.organization.joinPolicy)
+  );
   const blockedMemberships = memberships.filter(
     (membership) =>
-      membership.status === MembershipStatus.REJECTED || membership.status === MembershipStatus.SUSPENDED
+      (membership.status === MembershipStatus.REJECTED || membership.status === MembershipStatus.SUSPENDED) &&
+      canDisplayUnavailableOrganization({
+        status: membership.status,
+        activatedAt: membership.activatedAt,
+        joinPolicy: membership.organization.joinPolicy
+      })
   );
   const membershipOrganizationIds = new Set(memberships.map((membership) => membership.organizationId));
   const availableOrganizations = await prisma.organization.findMany({
-    where: { id: { notIn: [...membershipOrganizationIds] } },
+    where: {
+      id: { notIn: [...membershipOrganizationIds] },
+      joinPolicy: {
+        in: discoverableOrganizationJoinPolicies
+      }
+    },
     select: { id: true, name: true, type: true, joinPolicy: true },
     orderBy: { name: "asc" }
   });
@@ -234,10 +253,6 @@ function getJoinOption(policy: string) {
       return { description: "An administrator reviews new membership requests.", buttonLabel: "Request access" };
     case "EMAIL_DOMAIN":
       return { description: "Your verified email must match an allowed organization domain.", buttonLabel: "Verify domain" };
-    case "INVITE_ONLY":
-      return { description: "A personal invitation link is required.", buttonLabel: null };
-    case "ACCESS_CODE":
-      return { description: "Enter the organization code above to join.", buttonLabel: null };
     default:
       return { description: "Joining is not currently available.", buttonLabel: null };
   }
@@ -245,14 +260,10 @@ function getJoinOption(policy: string) {
 
 function getPendingMembershipMessage(policy: string) {
   switch (policy) {
-    case "ACCESS_CODE":
-      return "Enter the organization code above to activate access";
     case "OPEN":
       return "This organization is now open; activate your access below";
     case "EMAIL_DOMAIN":
       return "Verify your email domain again to activate access";
-    case "INVITE_ONLY":
-      return "A valid invitation is required to activate access";
     default:
       return "Waiting for organization approval";
   }

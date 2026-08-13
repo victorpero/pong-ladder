@@ -23,6 +23,7 @@ export type OrganizationJoinState = {
     | "already_member"
     | "rejected"
     | "suspended"
+    | "removed"
     | "invalid_code"
     | "invitation_required"
     | "domain_not_allowed"
@@ -148,7 +149,11 @@ async function createOrUpdateMembership(input: {
         return "ALREADY_MEMBER";
       }
 
-      if (existing?.status === MembershipStatus.REJECTED || existing?.status === MembershipStatus.SUSPENDED) {
+      if (
+        existing?.status === MembershipStatus.REJECTED ||
+        existing?.status === MembershipStatus.SUSPENDED ||
+        existing?.status === MembershipStatus.REMOVED
+      ) {
         return existing.status;
       }
 
@@ -211,6 +216,8 @@ function membershipState(result: MembershipResult, organizationName: string): Or
       return { outcome: "rejected", message: `Your request to join ${organizationName} was rejected.` };
     case MembershipStatus.SUSPENDED:
       return { outcome: "suspended", message: `Your access to ${organizationName} is suspended.` };
+    case MembershipStatus.REMOVED:
+      return { outcome: "removed", message: `Your membership in ${organizationName} was removed.` };
   }
 }
 

@@ -1,12 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { matchFeedOrderBy } from "@/lib/match-feed";
-import { getDefaultOrganization } from "@/lib/organizations";
 
-export async function getActiveSeason(organizationId?: string) {
+export async function getActiveSeason(organizationId: string) {
   return prisma.$transaction(async (tx) => {
-    const resolvedOrganizationId = organizationId ?? (await getDefaultOrganization(tx)).id;
-    return ensureCurrentSeason(tx, resolvedOrganizationId);
+    return ensureCurrentSeason(tx, organizationId);
   });
 }
 
@@ -105,30 +103,26 @@ export async function getTeamLadder(seasonId: string) {
  * profile can derive all-time, seasonal and head-to-head statistics without
  * querying per opponent.
  */
-export async function getPlayerMatches(userId: string, organizationId?: string) {
-  const resolvedOrganizationId = organizationId ?? (await getDefaultOrganization(prisma)).id;
-
+export async function getPlayerMatches(userId: string, organizationId: string) {
   return prisma.match.findMany({
     where: {
-      organizationId: resolvedOrganizationId,
+      organizationId,
       OR: [{ winnerId: userId }, { loserId: userId }],
-      season: { organizationId: resolvedOrganizationId }
+      season: { organizationId }
     },
     include: { winner: true, loser: true },
     orderBy: matchFeedOrderBy
   });
 }
 
-export async function getUsers(organizationId?: string) {
-  const resolvedOrganizationId = organizationId ?? (await getDefaultOrganization(prisma)).id;
-
+export async function getUsers(organizationId: string) {
   return prisma.user.findMany({
     where: {
       memberships: {
-        some: { organizationId: resolvedOrganizationId, status: "ACTIVE" }
+        some: { organizationId, status: "ACTIVE" }
       }
     },
-    include: { memberships: { where: { organizationId: resolvedOrganizationId }, include: { team: true } } },
+    include: { memberships: { where: { organizationId }, include: { team: true } } },
     orderBy: { username: "asc" }
   }).then((users) => users.map((user) => ({ ...user, team: user.memberships[0]?.team ?? null })));
 }
