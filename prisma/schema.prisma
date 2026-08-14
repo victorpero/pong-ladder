@@ -23,6 +23,19 @@ enum OrganizationType {
   OTHER
 }
 
+enum OrganizationVisibility {
+  PRIVATE
+  DISCOVERABLE
+}
+
+enum OrganizationAuditAction {
+  ORGANIZATION_CREATED
+  SETTINGS_UPDATED
+  ACCESS_CODE_GENERATED
+  ACCESS_CODE_ROTATED
+  ACCESS_CODE_DISABLED
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -71,6 +84,7 @@ model Organization {
   slug                  String                   @unique
   name                  String
   type                  OrganizationType
+  visibility            OrganizationVisibility   @default(PRIVATE)
   joinPolicy            OrganizationJoinPolicy   @default(ADMIN_APPROVAL)
   allowedEmailDomains   String[]                 @default([])
   accessCodeHash        String?                  @unique
@@ -84,30 +98,33 @@ model Organization {
   membershipAuditEvents MembershipAuditEvent[]
   invitations           OrganizationInvitation[]
   invitationRedemptions InvitationRedemption[]
+  auditEvents           OrganizationAuditEvent[]
 
   @@index([name])
+  @@index([visibility])
 }
 
 model Membership {
-  id                 String                   @id @default(cuid())
-  userId             String
-  organizationId     String
-  role               MembershipRole           @default(PLAYER)
-  status             MembershipStatus         @default(PENDING)
-  displayName        String?
-  teamId             String?
-  joinMethod         MembershipJoinMethod     @default(LEGACY)
-  activatedAt        DateTime?
-  reviewedAt         DateTime?
-  reviewedById       String?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team               Team?                    @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  seasonPlayers      SeasonPlayer[]
-  auditEvents        MembershipAuditEvent[]
-  createdInvitations OrganizationInvitation[] @relation("InvitationCreator")
+  id                      String                   @id @default(cuid())
+  userId                  String
+  organizationId          String
+  role                    MembershipRole           @default(PLAYER)
+  status                  MembershipStatus         @default(PENDING)
+  displayName             String?
+  teamId                  String?
+  joinMethod              MembershipJoinMethod     @default(LEGACY)
+  activatedAt             DateTime?
+  reviewedAt              DateTime?
+  reviewedById            String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                    Team?                    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  seasonPlayers           SeasonPlayer[]
+  auditEvents             MembershipAuditEvent[]
+  createdInvitations      OrganizationInvitation[] @relation("InvitationCreator")
+  organizationAuditEvents OrganizationAuditEvent[] @relation("OrganizationAuditActor")
 
   @@unique([userId, organizationId])
   @@unique([id, userId, organizationId])
@@ -169,6 +186,19 @@ model MembershipAuditEvent {
   @@index([membershipId])
   @@index([subjectUserId])
   @@index([actorUserId])
+}
+
+model OrganizationAuditEvent {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  actorMembershipId String?
+  action            OrganizationAuditAction
+  createdAt         DateTime                @default(now())
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorMembership   Membership?             @relation("OrganizationAuditActor", fields: [actorMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorMembershipId])
 }
 
 model OrganizationInvitation {

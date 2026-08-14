@@ -1,6 +1,12 @@
 "use server";
 
-import { OrganizationJoinPolicy, Prisma } from "@prisma/client";
+import {
+  OrganizationAuditAction,
+  OrganizationJoinPolicy,
+  OrganizationType,
+  OrganizationVisibility,
+  Prisma
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOrganizationOwner } from "@/lib/authz";
@@ -17,6 +23,11 @@ export type OrganizationPolicyState = {
 
 const slugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const policySchema = z.nativeEnum(OrganizationJoinPolicy);
+const detailsSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  type: z.nativeEnum(OrganizationType),
+  visibility: z.nativeEnum(OrganizationVisibility)
+});
 
 function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -33,7 +44,7 @@ export async function updateOrganizationJoinPolicy(
 ): Promise<OrganizationPolicyState> {
   const slug = slugSchema.parse(value(formData, "organizationSlug"));
   const policy = policySchema.parse(value(formData, "joinPolicy"));
-  const { organization } = await requireOrganizationOwner(slug);
+  const { organization, membership } = await requireOrganizationOwner(slug);
   const rawDomains = value(formData, "allowedEmailDomains")
     .split(/[\s,]+/)
     .map((domain) => domain.trim())
@@ -48,17 +59,58 @@ export async function updateOrganizationJoinPolicy(
     return { error: "One or more email domains are invalid or duplicated." };
   }
 
-  await prisma.organization.update({
-    where: { id: organization.id },
-    data: {
-      joinPolicy: policy,
-      allowedEmailDomains,
-      ...(policy === OrganizationJoinPolicy.ACCESS_CODE ? {} : { accessCodeEnabled: false })
-    }
+  await prisma.$transaction(async (tx) => {
+    await tx.organization.update({
+      where: { id: organization.id },
+      data: {
+        joinPolicy: policy,
+        allowedEmailDomains,
+        ...(policy === OrganizationJoinPolicy.ACCESS_CODE ? {} : { accessCodeEnabled: false })
+      }
+    });
+    await tx.organizationAuditEvent.create({
+      data: {
+        organizationId: organization.id,
+        actorMembershipId: membership.id,
+        action: OrganizationAuditAction.SETTINGS_UPDATED
+      }
+    });
   });
 
   refreshPolicyPages(slug);
   return { success: "Join policy updated." };
+}
+
+export async function updateOrganizationDetails(
+  _state: OrganizationPolicyState,
+  formData: FormData
+): Promise<OrganizationPolicyState> {
+  const slug = slugSchema.parse(value(formData, "organizationSlug"));
+  const parsed = detailsSchema.safeParse({
+    name: value(formData, "name"),
+    type: value(formData, "type"),
+    visibility: value(formData, "visibility")
+  });
+
+  if (!parsed.success) {
+    return { error: "Check the organization name, type, and visibility." };
+  }
+
+  const { organization, membership } = await requireOrganizationOwner(slug);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.organization.update({ where: { id: organization.id }, data: parsed.data });
+    await tx.organizationAuditEvent.create({
+      data: {
+        organizationId: organization.id,
+        actorMembershipId: membership.id,
+        action: OrganizationAuditAction.SETTINGS_UPDATED
+      }
+    });
+  });
+
+  refreshPolicyPages(slug);
+  return { success: "Organization settings updated." };
 }
 
 export async function rotateOrganizationAccessCode(
@@ -66,20 +118,32 @@ export async function rotateOrganizationAccessCode(
   formData: FormData
 ): Promise<OrganizationPolicyState> {
   const slug = slugSchema.parse(value(formData, "organizationSlug"));
-  const { organization } = await requireOrganizationOwner(slug);
+  const { organization, membership } = await requireOrganizationOwner(slug);
+  const wasConfigured = Boolean(organization.accessCodeHash);
   let accessCode = "";
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     accessCode = generateOrganizationAccessCode();
 
     try {
-      await prisma.organization.update({
-        where: { id: organization.id },
-        data: {
-          accessCodeHash: hashOrganizationAccessCode(accessCode),
-          accessCodeEnabled: true,
-          accessCodeUpdatedAt: new Date()
-        }
+      await prisma.$transaction(async (tx) => {
+        await tx.organization.update({
+          where: { id: organization.id },
+          data: {
+            accessCodeHash: hashOrganizationAccessCode(accessCode),
+            accessCodeEnabled: true,
+            accessCodeUpdatedAt: new Date()
+          }
+        });
+        await tx.organizationAuditEvent.create({
+          data: {
+            organizationId: organization.id,
+            actorMembershipId: membership.id,
+            action: wasConfigured
+              ? OrganizationAuditAction.ACCESS_CODE_ROTATED
+              : OrganizationAuditAction.ACCESS_CODE_GENERATED
+          }
+        });
       });
       break;
     } catch (error) {
@@ -101,11 +165,20 @@ export async function disableOrganizationAccessCode(
   formData: FormData
 ): Promise<OrganizationPolicyState> {
   const slug = slugSchema.parse(value(formData, "organizationSlug"));
-  const { organization } = await requireOrganizationOwner(slug);
+  const { organization, membership } = await requireOrganizationOwner(slug);
 
-  await prisma.organization.update({
-    where: { id: organization.id },
-    data: { accessCodeHash: null, accessCodeEnabled: false, accessCodeUpdatedAt: new Date() }
+  await prisma.$transaction(async (tx) => {
+    await tx.organization.update({
+      where: { id: organization.id },
+      data: { accessCodeHash: null, accessCodeEnabled: false, accessCodeUpdatedAt: new Date() }
+    });
+    await tx.organizationAuditEvent.create({
+      data: {
+        organizationId: organization.id,
+        actorMembershipId: membership.id,
+        action: OrganizationAuditAction.ACCESS_CODE_DISABLED
+      }
+    });
   });
 
   refreshPolicyPages(slug);

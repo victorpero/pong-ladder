@@ -464,6 +464,8 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`: PostgreSQL container settings.
 - `SEED_ADMIN_PASSWORD`: Optional password for the seeded admin account. Defaults to `SEED_USER_PASSWORD`.
 - `SEED_USER_PASSWORD`: Optional password for seeded non-admin users. Defaults to `password123`.
+- `ORGANIZATION_CREATION_ENABLED`: Set to `true` to enable organization creation for every verified account.
+- `ORGANIZATION_CREATOR_EMAILS`: Comma-separated verified-email allowlist used while global organization creation is disabled.
 
 ## Project Structure
 
