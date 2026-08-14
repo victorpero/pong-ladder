@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   disableOrganizationAccessCode,
@@ -34,6 +35,7 @@ export function OrganizationPolicySettings({
   const [detailsState, detailsAction] = useFormState(updateOrganizationDetails, initialState);
   const [rotateState, rotateAction] = useFormState(rotateOrganizationAccessCode, initialState);
   const [disableState, disableAction] = useFormState(disableOrganizationAccessCode, initialState);
+  const [selectedJoinPolicy, setSelectedJoinPolicy] = useState(joinPolicy);
 
   return (
     <section className="section-band xl:col-span-2">
@@ -89,7 +91,12 @@ export function OrganizationPolicySettings({
             <input type="hidden" name="organizationSlug" value={organizationSlug} />
             <label className="grid gap-1">
               <span className="label">Policy</span>
-              <select className="field" name="joinPolicy" defaultValue={joinPolicy}>
+              <select
+                className="field"
+                name="joinPolicy"
+                value={selectedJoinPolicy}
+                onChange={(event) => setSelectedJoinPolicy(event.target.value)}
+              >
                 <option value="OPEN">Open</option>
                 <option value="ADMIN_APPROVAL">Administrator approval</option>
                 <option value="INVITE_ONLY">Invitation only</option>
@@ -97,16 +104,24 @@ export function OrganizationPolicySettings({
                 <option value="ACCESS_CODE">Organization code</option>
               </select>
             </label>
-            <label className="grid gap-1">
-              <span className="label">Allowed email domains</span>
-              <input
-                className="field"
-                name="allowedEmailDomains"
-                defaultValue={allowedEmailDomains.join(", ")}
-                placeholder="example.com, subsidiary.example.com"
-              />
-            </label>
-            <p className="text-xs leading-5 text-muted">Domains are matched exactly after normalization.</p>
+            {selectedJoinPolicy === "EMAIL_DOMAIN" ? (
+              <div className="grid gap-1">
+                <label className="label" htmlFor="policy-allowed-email-domains">
+                  Allowed email domains
+                </label>
+                <input
+                  className="field"
+                  id="policy-allowed-email-domains"
+                  name="allowedEmailDomains"
+                  defaultValue={allowedEmailDomains.join(", ")}
+                  placeholder="example.com, subsidiary.example.com"
+                  required
+                />
+                <p className="text-xs leading-5 text-muted">
+                  Domains are matched exactly after normalization. Separate multiple domains with commas.
+                </p>
+              </div>
+            ) : null}
             <SubmitButton label="Save policy" pendingLabel="Saving..." />
             <FormMessage state={policyState} />
           </form>
