@@ -160,6 +160,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
         {membership.role === MembershipRole.OWNER ? (
           <OrganizationPolicySettings
             organizationSlug={organization.slug}
+            organizationName={organization.name}
+            organizationType={organization.type}
+            visibility={organization.visibility}
             joinPolicy={organization.joinPolicy}
             allowedEmailDomains={organization.allowedEmailDomains}
             accessCodeEnabled={organization.accessCodeEnabled}

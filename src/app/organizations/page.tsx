@@ -1,5 +1,5 @@
-import { MembershipStatus } from "@prisma/client";
-import { Ban, Building2, CheckCircle2, Clock3, KeyRound, LogOut, ShieldCheck, UserCircle } from "lucide-react";
+import { MembershipStatus, OrganizationVisibility } from "@prisma/client";
+import { Ban, Building2, CheckCircle2, Clock3, KeyRound, LogOut, Plus, ShieldCheck, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { LogoMark } from "@/components/LogoMark";
 import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
@@ -11,6 +11,7 @@ import {
   discoverableOrganizationJoinPolicies
 } from "@/lib/organization-discovery";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { canCreateOrganizations } from "@/lib/organization-creation-policy";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function OrganizationsPage({
   searchParams
 }: {
-  searchParams: { joined?: string | string[] };
+  searchParams: { joined?: string | string[]; created?: string | string[] };
 }) {
   const { user } = await requireAuthenticatedUser(organizationsPath);
 
@@ -37,6 +38,8 @@ export default async function OrganizationsPage({
   const activeMemberships = memberships.filter((membership) => membership.status === MembershipStatus.ACTIVE);
   const joinedSlug = Array.isArray(searchParams.joined) ? searchParams.joined[0] : searchParams.joined;
   const joinedMembership = activeMemberships.find((membership) => membership.organization.slug === joinedSlug);
+  const createdSlug = Array.isArray(searchParams.created) ? searchParams.created[0] : searchParams.created;
+  const createdMembership = activeMemberships.find((membership) => membership.organization.slug === createdSlug);
   const pendingMemberships = memberships.filter(
     (membership) =>
       membership.status === MembershipStatus.PENDING &&
@@ -55,6 +58,7 @@ export default async function OrganizationsPage({
   const availableOrganizations = await prisma.organization.findMany({
     where: {
       id: { notIn: [...membershipOrganizationIds] },
+      visibility: OrganizationVisibility.DISCOVERABLE,
       joinPolicy: {
         in: discoverableOrganizationJoinPolicies
       }
@@ -105,6 +109,11 @@ export default async function OrganizationsPage({
             Choose an organization to open its ladder. Your matches, teams, challenges, and rankings stay inside that
             organization.
           </p>
+          {canCreateOrganizations(user.email) ? (
+            <Link className="button mt-5 inline-flex items-center gap-2" href="/organizations/new">
+              <Plus aria-hidden="true" size={17} /> Create organization
+            </Link>
+          ) : null}
         </section>
 
         {joinedMembership ? (
@@ -114,6 +123,18 @@ export default async function OrganizationsPage({
               <p className="font-black text-success">Invitation accepted</p>
               <p className="mt-1 text-sm leading-6 text-muted">
                 {joinedMembership.organization.name} is now one of your organizations. Open its ladder below.
+              </p>
+            </div>
+          </section>
+        ) : null}
+
+        {createdMembership ? (
+          <section className="mb-8 flex max-w-3xl items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-5">
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={22} />
+            <div>
+              <p className="font-black text-success">Organization created</p>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                You are now the owner of {createdMembership.organization.name}. Open it below to configure membership.
               </p>
             </div>
           </section>
