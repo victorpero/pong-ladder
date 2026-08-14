@@ -17,6 +17,10 @@ export function normalizeOrganizationAccessCode(value: string) {
   return value.trim().toUpperCase().replace(/[\s-]+/g, "");
 }
 
+export function isOrganizationAccessCode(value: string) {
+  return /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/.test(normalizeOrganizationAccessCode(value));
+}
+
 export function hashOrganizationAccessCode(value: string, secret = getAccessCodeSecret()) {
   return createHmac("sha256", secret).update(normalizeOrganizationAccessCode(value), "utf8").digest("hex");
 }

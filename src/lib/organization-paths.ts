@@ -1,7 +1,7 @@
 export const organizationsPath = "/organizations";
 
 const organizationRoutePattern = /^\/org\/([^/]+)(?:\/|$)/;
-const invitationRoutePattern = /^\/join\/[^/?#]+(?:[?#].*)?$/;
+const invitationRoutePattern = /^\/join\/[^?#]+(?:[?#].*)?$/;
 
 export function organizationPath(slug: string, section = "ladder", suffix = "") {
   const encodedSlug = encodeURIComponent(slug);

@@ -3,7 +3,6 @@
 import {
   MembershipJoinMethod,
   MembershipStatus,
-  OrganizationJoinPolicy,
   Prisma
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -30,6 +29,7 @@ export type OrganizationJoinState = {
     | "access_code_required"
     | "rate_limited";
   message?: string;
+  organizationSlug?: string;
 };
 
 const organizationIdSchema = z.string().min(1).max(100);
@@ -107,10 +107,9 @@ export async function joinOrganizationWithAccessCode(
   const organization = await prisma.organization.findFirst({
     where: {
       accessCodeHash,
-      accessCodeEnabled: true,
-      joinPolicy: OrganizationJoinPolicy.ACCESS_CODE
+      accessCodeEnabled: true
     },
-    select: { id: true, name: true }
+    select: { id: true, name: true, slug: true }
   });
 
   if (!organization) {
@@ -125,7 +124,7 @@ export async function joinOrganizationWithAccessCode(
   });
 
   revalidatePath(organizationsPath);
-  return membershipState(result, organization.name);
+  return membershipState(result, organization.name, organization.slug);
 }
 
 type MembershipResult = MembershipStatus | "ALREADY_MEMBER";
@@ -204,12 +203,20 @@ async function createOrUpdateMembership(input: {
   }
 }
 
-function membershipState(result: MembershipResult, organizationName: string): OrganizationJoinState {
+function membershipState(
+  result: MembershipResult,
+  organizationName: string,
+  organizationSlug?: string
+): OrganizationJoinState {
   switch (result) {
     case "ALREADY_MEMBER":
-      return { outcome: "already_member", message: `You already belong to ${organizationName}.` };
+      return {
+        outcome: "already_member",
+        message: `You already belong to ${organizationName}.`,
+        organizationSlug
+      };
     case MembershipStatus.ACTIVE:
-      return { outcome: "active", message: `${organizationName} is ready to open.` };
+      return { outcome: "active", message: `${organizationName} is ready to open.`, organizationSlug };
     case MembershipStatus.PENDING:
       return { outcome: "pending", message: `Your request to join ${organizationName} is awaiting approval.` };
     case MembershipStatus.REJECTED:
