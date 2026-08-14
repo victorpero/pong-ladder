@@ -65,7 +65,7 @@ spec:
             - name: NEXT_PUBLIC_APP_NAME
               value: Pong Ladder
             - name: APP_BASE_URL
-              value: https://pong-ladder.home.arpa
+              value: https://pongladder.com
             - name: EMAIL_DELIVERY_MODE
               value: smtp
             - name: SESSION_COOKIE_SECURE
