@@ -9,7 +9,7 @@ import { hashOrganizationAccessCode } from "@/lib/organization-access-code";
 
 type OrganizationRow = Pick<
   Organization,
-  "id" | "name" | "joinPolicy" | "allowedEmailDomains" | "accessCodeHash" | "accessCodeEnabled"
+  "id" | "slug" | "name" | "joinPolicy" | "allowedEmailDomains" | "accessCodeHash" | "accessCodeEnabled"
 >;
 
 type MembershipRow = {
@@ -94,12 +94,11 @@ vi.mock("@/lib/prisma", () => {
     organization: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         state.organizations.find((organization) => organization.id === where.id) ?? null,
-      findFirst: async ({ where }: { where: { accessCodeHash: string; accessCodeEnabled: boolean; joinPolicy: OrganizationJoinPolicy } }) =>
+      findFirst: async ({ where }: { where: { accessCodeHash: string; accessCodeEnabled: boolean } }) =>
         state.organizations.find(
           (organization) =>
             organization.accessCodeHash === where.accessCodeHash &&
-            organization.accessCodeEnabled === where.accessCodeEnabled &&
-            organization.joinPolicy === where.joinPolicy
+            organization.accessCodeEnabled === where.accessCodeEnabled
         ) ?? null
     },
     membership,
@@ -116,6 +115,7 @@ const { joinOrganizationByPolicy, joinOrganizationWithAccessCode } = await impor
 function organization(overrides: Partial<OrganizationRow> = {}): OrganizationRow {
   return {
     id: "org-1",
+    slug: "example-club",
     name: "Example Club",
     joinPolicy: OrganizationJoinPolicy.OPEN,
     allowedEmailDomains: [],
@@ -179,6 +179,7 @@ describe("organization join actions", () => {
     state.organizations = [
       organization({
         id: "org-polisen",
+        slug: "polisen",
         name: "Polisen",
         joinPolicy: OrganizationJoinPolicy.ACCESS_CODE,
         accessCodeHash: hashOrganizationAccessCode(code),
@@ -198,7 +199,10 @@ describe("organization join actions", () => {
       }
     ];
 
-    await expect(joinOrganizationWithAccessCode({}, codeForm(code))).resolves.toMatchObject({ outcome: "active" });
+    await expect(joinOrganizationWithAccessCode({}, codeForm(code))).resolves.toMatchObject({
+      outcome: "active",
+      organizationSlug: "polisen"
+    });
     expect(state.memberships[0]).toMatchObject({
       status: MembershipStatus.ACTIVE,
       joinMethod: MembershipJoinMethod.ACCESS_CODE,

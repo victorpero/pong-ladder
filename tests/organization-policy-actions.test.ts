@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashOrganizationAccessCode } from "@/lib/organization-access-code";
+import { decryptOrganizationCredential } from "@/lib/organization-credential";
 
 const state = vi.hoisted(() => ({
   owner: true,
@@ -18,6 +19,7 @@ const state = vi.hoisted(() => ({
     joinPolicy: "ADMIN_APPROVAL" as OrganizationJoinPolicy,
     allowedEmailDomains: [] as string[],
     accessCodeHash: null as string | null,
+    accessCodeCiphertext: null as string | null,
     accessCodeEnabled: false,
     accessCodeUpdatedAt: null as Date | null
   },
@@ -26,6 +28,13 @@ const state = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/authz", () => ({
+  requireOrganizationAdmin: async () => {
+    if (!state.owner) {
+      throw new Error("NOT_FOUND");
+    }
+
+    return { organization: state.organization, membership: { id: "membership-owner" } };
+  },
   requireOrganizationOwner: async () => {
     if (!state.owner) {
       throw new Error("NOT_FOUND");
@@ -76,6 +85,7 @@ function codeForm() {
 
 beforeEach(() => {
   process.env.ORGANIZATION_ACCESS_CODE_SECRET = "organization-code-test-secret";
+  process.env.ORGANIZATION_CREDENTIAL_SECRET = "organization-credential-test-secret";
   state.owner = true;
   state.auditActions = [];
   Object.assign(state.organization, {
@@ -85,6 +95,7 @@ beforeEach(() => {
     visibility: OrganizationVisibility.PRIVATE,
     allowedEmailDomains: [],
     accessCodeHash: null,
+    accessCodeCiphertext: null,
     accessCodeEnabled: false,
     accessCodeUpdatedAt: null
   });
@@ -113,30 +124,37 @@ describe("organization join-policy administration", () => {
     ).resolves.toMatchObject({ error: expect.stringContaining("valid email domain") });
   });
 
-  it("returns a raw code once while storing only its hash", async () => {
-    const result = await rotateOrganizationAccessCode({}, codeForm());
+  it("stores a hash and encrypted recoverable value without returning the raw code", async () => {
+    await rotateOrganizationAccessCode({}, codeForm());
+    const accessCode = decryptOrganizationCredential(state.organization.accessCodeCiphertext!);
 
-    expect(result.accessCode).toMatch(/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}(?:-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}){2}$/);
-    expect(state.organization.accessCodeHash).toBe(hashOrganizationAccessCode(result.accessCode!));
-    expect(state.organization.accessCodeHash).not.toContain(result.accessCode!);
+    expect(accessCode).toMatch(/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}(?:-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}){2}$/);
+    expect(state.organization.accessCodeHash).toBe(hashOrganizationAccessCode(accessCode));
+    expect(state.organization.accessCodeHash).not.toContain(accessCode);
     expect(state.organization.accessCodeEnabled).toBe(true);
     expect(state.organization.accessCodeUpdatedAt).toBeInstanceOf(Date);
     expect(state.auditActions).toContain(OrganizationAuditAction.ACCESS_CODE_GENERATED);
   });
 
   it("rotates and disables a code without retaining a usable old value", async () => {
-    const first = await rotateOrganizationAccessCode({}, codeForm());
+    await rotateOrganizationAccessCode({}, codeForm());
+    const firstCode = decryptOrganizationCredential(state.organization.accessCodeCiphertext!);
     const firstHash = state.organization.accessCodeHash;
-    const second = await rotateOrganizationAccessCode({}, codeForm());
+    await rotateOrganizationAccessCode({}, codeForm());
+    const secondCode = decryptOrganizationCredential(state.organization.accessCodeCiphertext!);
 
-    expect(second.accessCode).not.toBe(first.accessCode);
+    expect(secondCode).not.toBe(firstCode);
     expect(state.organization.accessCodeHash).not.toBe(firstHash);
     expect(state.auditActions).toContain(OrganizationAuditAction.ACCESS_CODE_ROTATED);
 
     await expect(disableOrganizationAccessCode({}, codeForm())).resolves.toEqual({
       success: "The organization code was disabled."
     });
-    expect(state.organization).toMatchObject({ accessCodeHash: null, accessCodeEnabled: false });
+    expect(state.organization).toMatchObject({
+      accessCodeHash: null,
+      accessCodeCiphertext: null,
+      accessCodeEnabled: false
+    });
     expect(state.auditActions).toContain(OrganizationAuditAction.ACCESS_CODE_DISABLED);
   });
 
@@ -159,10 +177,10 @@ describe("organization join-policy administration", () => {
     expect(state.auditActions).toContain(OrganizationAuditAction.SETTINGS_UPDATED);
   });
 
-  it("disables code use when switching away from the access-code policy", async () => {
+  it("keeps the member invite code active when the discovery policy changes", async () => {
     await rotateOrganizationAccessCode({}, codeForm());
     await updateOrganizationJoinPolicy({}, policyForm(OrganizationJoinPolicy.OPEN));
 
-    expect(state.organization.accessCodeEnabled).toBe(false);
+    expect(state.organization.accessCodeEnabled).toBe(true);
   });
 });

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, UserCircle } from "lucide-react";
+import { LogOut, UserCircle, UserPlus, Wrench } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { AdminNavButton } from "@/components/AdminNavButton";
+import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/LogoMark";
 import { NotificationBell } from "@/components/NotificationBell";
 import { OrganizationSwitcher } from "@/components/OrganizationSwitcher";
@@ -19,9 +19,57 @@ const links = [
   ["Rules", "rules"]
 ];
 
+type SessionState = {
+  isAdmin: boolean;
+  isApproved: boolean;
+};
+
 export function NavBar() {
   const pathname = usePathname();
   const organizationSlug = organizationSlugFromPath(pathname);
+  const [session, setSession] = useState<SessionState>({ isAdmin: false, isApproved: false });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setSession({ isAdmin: false, isApproved: false });
+
+    if (!organizationSlug) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const activeOrganizationSlug = organizationSlug;
+
+    async function loadSession() {
+      try {
+        const response = await fetch(`/api/session?organization=${encodeURIComponent(activeOrganizationSlug)}`, {
+          cache: "no-store"
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as SessionState;
+
+        if (!cancelled) {
+          setSession(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setSession({ isAdmin: false, isApproved: false });
+        }
+      }
+    }
+
+    loadSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationSlug]);
 
   if (!organizationSlug) {
     return null;
@@ -39,6 +87,15 @@ export function NavBar() {
           </Link>
           <span className="hidden text-line sm:block">/</span>
           <OrganizationSwitcher currentSlug={organizationSlug} />
+          {session.isApproved ? (
+            <Link
+              href={organizationPath(organizationSlug, "invite")}
+              className="ml-auto inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink transition hover:border-court-500 hover:text-court-700"
+            >
+              <UserPlus aria-hidden="true" size={17} strokeWidth={2.2} />
+              Invite
+            </Link>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           <nav aria-label="Primary navigation" className="flex flex-1 gap-2 overflow-x-auto pb-1">
@@ -57,8 +114,17 @@ export function NavBar() {
             })}
           </nav>
           <nav aria-label="Account navigation" className="ml-auto flex shrink-0 gap-2 pb-1">
+            {session.isAdmin ? (
+              <Link
+                href={organizationPath(organizationSlug, "admin")}
+                aria-label="Admin"
+                title="Admin"
+                className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink transition hover:border-court-500 hover:text-court-700"
+              >
+                <Wrench aria-hidden="true" size={18} strokeWidth={2.2} />
+              </Link>
+            ) : null}
             <NotificationBell organizationSlug={organizationSlug} />
-            <AdminNavButton organizationSlug={organizationSlug} />
             <Link
               href={organizationPath(organizationSlug, "account")}
               aria-label="My account"

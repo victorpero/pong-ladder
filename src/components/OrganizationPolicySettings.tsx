@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
-  disableOrganizationAccessCode,
-  rotateOrganizationAccessCode,
   updateOrganizationDetails,
   updateOrganizationJoinPolicy,
   type OrganizationPolicyState
@@ -18,9 +16,7 @@ export function OrganizationPolicySettings({
   organizationType,
   visibility,
   joinPolicy,
-  allowedEmailDomains,
-  accessCodeEnabled,
-  accessCodeUpdatedAt
+  allowedEmailDomains
 }: {
   organizationSlug: string;
   organizationName: string;
@@ -28,13 +24,9 @@ export function OrganizationPolicySettings({
   visibility: string;
   joinPolicy: string;
   allowedEmailDomains: string[];
-  accessCodeEnabled: boolean;
-  accessCodeUpdatedAt: string | null;
 }) {
   const [policyState, policyAction] = useFormState(updateOrganizationJoinPolicy, initialState);
   const [detailsState, detailsAction] = useFormState(updateOrganizationDetails, initialState);
-  const [rotateState, rotateAction] = useFormState(rotateOrganizationAccessCode, initialState);
-  const [disableState, disableAction] = useFormState(disableOrganizationAccessCode, initialState);
   const [selectedJoinPolicy, setSelectedJoinPolicy] = useState(joinPolicy);
 
   return (
@@ -127,39 +119,6 @@ export function OrganizationPolicySettings({
           </form>
         </div>
 
-        <div className="rounded-lg border border-line bg-slate-50 p-4 lg:col-span-2">
-          <p className="label">Organization code</p>
-          <h3 className="mt-1 text-xl font-black">{accessCodeEnabled ? "Code enabled" : "Code disabled"}</h3>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            Generating a new code immediately invalidates the previous one. Only its hash is stored.
-          </p>
-          {accessCodeUpdatedAt ? (
-            <p className="mt-2 text-xs font-semibold text-muted">
-              Last changed {new Date(accessCodeUpdatedAt).toLocaleString()}
-            </p>
-          ) : null}
-          <form action={rotateAction} className="mt-5 grid gap-3">
-            <input type="hidden" name="organizationSlug" value={organizationSlug} />
-            <SubmitButton label={accessCodeEnabled ? "Rotate code" : "Generate code"} pendingLabel="Generating..." />
-            <FormMessage state={rotateState} />
-            {rotateState.accessCode ? (
-              <div className="rounded-lg border border-green-200 bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-wide text-success">Copy this code now</p>
-                <p className="mt-2 break-all font-mono text-xl font-black tracking-widest text-ink">
-                  {rotateState.accessCode}
-                </p>
-                <p className="mt-2 text-xs text-muted">It will not be shown again.</p>
-              </div>
-            ) : null}
-          </form>
-          {accessCodeEnabled ? (
-            <form action={disableAction} className="mt-3 grid gap-3">
-              <input type="hidden" name="organizationSlug" value={organizationSlug} />
-              <SubmitButton label="Disable code" pendingLabel="Disabling..." danger />
-              <FormMessage state={disableState} />
-            </form>
-          ) : null}
-        </div>
       </div>
     </section>
   );
@@ -167,17 +126,15 @@ export function OrganizationPolicySettings({
 
 function SubmitButton({
   label,
-  pendingLabel,
-  danger = false
+  pendingLabel
 }: {
   label: string;
   pendingLabel: string;
-  danger?: boolean;
 }) {
   const { pending } = useFormStatus();
 
   return (
-    <button className={danger ? "button-danger" : "button"} type="submit" disabled={pending}>
+    <button className="button" type="submit" disabled={pending}>
       {pending ? pendingLabel : label}
     </button>
   );

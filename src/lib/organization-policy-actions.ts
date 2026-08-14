@@ -9,8 +9,9 @@ import {
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireOrganizationOwner } from "@/lib/authz";
+import { requireOrganizationAdmin, requireOrganizationOwner } from "@/lib/authz";
 import { generateOrganizationAccessCode, hashOrganizationAccessCode } from "@/lib/organization-access-code";
+import { encryptOrganizationCredential } from "@/lib/organization-credential";
 import { normalizeEmailDomains } from "@/lib/organization-domain";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,6 @@ import { prisma } from "@/lib/prisma";
 export type OrganizationPolicyState = {
   error?: string;
   success?: string;
-  accessCode?: string;
 };
 
 const slugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -36,6 +36,7 @@ function value(formData: FormData, key: string) {
 function refreshPolicyPages(slug: string) {
   revalidatePath(organizationsPath);
   revalidatePath(organizationPath(slug, "admin"));
+  revalidatePath(organizationPath(slug, "invite"));
 }
 
 export async function updateOrganizationJoinPolicy(
@@ -64,8 +65,7 @@ export async function updateOrganizationJoinPolicy(
       where: { id: organization.id },
       data: {
         joinPolicy: policy,
-        allowedEmailDomains,
-        ...(policy === OrganizationJoinPolicy.ACCESS_CODE ? {} : { accessCodeEnabled: false })
+        allowedEmailDomains
       }
     });
     await tx.organizationAuditEvent.create({
@@ -118,7 +118,7 @@ export async function rotateOrganizationAccessCode(
   formData: FormData
 ): Promise<OrganizationPolicyState> {
   const slug = slugSchema.parse(value(formData, "organizationSlug"));
-  const { organization, membership } = await requireOrganizationOwner(slug);
+  const { organization, membership } = await requireOrganizationAdmin(slug);
   const wasConfigured = Boolean(organization.accessCodeHash);
   let accessCode = "";
 
@@ -131,6 +131,7 @@ export async function rotateOrganizationAccessCode(
           where: { id: organization.id },
           data: {
             accessCodeHash: hashOrganizationAccessCode(accessCode),
+            accessCodeCiphertext: encryptOrganizationCredential(accessCode),
             accessCodeEnabled: true,
             accessCodeUpdatedAt: new Date()
           }
@@ -155,8 +156,7 @@ export async function rotateOrganizationAccessCode(
 
   refreshPolicyPages(slug);
   return {
-    success: "A new organization code was generated. The previous code no longer works.",
-    accessCode
+    success: "A new organization code was generated. The previous code no longer works."
   };
 }
 
@@ -170,7 +170,12 @@ export async function disableOrganizationAccessCode(
   await prisma.$transaction(async (tx) => {
     await tx.organization.update({
       where: { id: organization.id },
-      data: { accessCodeHash: null, accessCodeEnabled: false, accessCodeUpdatedAt: new Date() }
+      data: {
+        accessCodeHash: null,
+        accessCodeCiphertext: null,
+        accessCodeEnabled: false,
+        accessCodeUpdatedAt: new Date()
+      }
     });
     await tx.organizationAuditEvent.create({
       data: {

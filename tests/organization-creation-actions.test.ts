@@ -12,6 +12,8 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalCreationFlag = process.env.ORGANIZATION_CREATION_ENABLED;
 const originalCreatorAllowlist = process.env.ORGANIZATION_CREATOR_EMAILS;
+const originalAccessCodeSecret = process.env.ORGANIZATION_ACCESS_CODE_SECRET;
+const originalCredentialSecret = process.env.ORGANIZATION_CREDENTIAL_SECRET;
 
 type OrganizationRow = {
   id: string;
@@ -21,6 +23,10 @@ type OrganizationRow = {
   joinPolicy: OrganizationJoinPolicy;
   visibility: OrganizationVisibility;
   allowedEmailDomains: string[];
+  accessCodeHash: string;
+  accessCodeCiphertext: string;
+  accessCodeEnabled: boolean;
+  accessCodeUpdatedAt: Date;
 };
 
 const state = vi.hoisted(() => ({
@@ -94,6 +100,8 @@ const { createOrganization } = await import("@/lib/organization-creation-actions
 beforeEach(() => {
   process.env.ORGANIZATION_CREATION_ENABLED = "true";
   process.env.ORGANIZATION_CREATOR_EMAILS = "";
+  process.env.ORGANIZATION_ACCESS_CODE_SECRET = "organization-code-creation-test-secret";
+  process.env.ORGANIZATION_CREDENTIAL_SECRET = "organization-credential-creation-test-secret";
   state.user = { id: "creator", email: "creator@example.com", emailVerifiedAt: new Date() };
   state.organizations = [];
   state.memberships = [];
@@ -104,6 +112,8 @@ beforeEach(() => {
 afterAll(() => {
   process.env.ORGANIZATION_CREATION_ENABLED = originalCreationFlag;
   process.env.ORGANIZATION_CREATOR_EMAILS = originalCreatorAllowlist;
+  process.env.ORGANIZATION_ACCESS_CODE_SECRET = originalAccessCodeSecret;
+  process.env.ORGANIZATION_CREDENTIAL_SECRET = originalCredentialSecret;
 });
 
 describe("organization creation", () => {
@@ -113,7 +123,14 @@ describe("organization creation", () => {
     );
 
     expect(state.organizations).toContainEqual(
-      expect.objectContaining({ slug: "stockholm-club", name: "Stockholm Club" })
+      expect.objectContaining({
+        slug: "stockholm-club",
+        name: "Stockholm Club",
+        accessCodeEnabled: true,
+        accessCodeHash: expect.any(String),
+        accessCodeCiphertext: expect.any(String),
+        accessCodeUpdatedAt: expect.any(Date)
+      })
     );
     expect(state.memberships).toContainEqual(
       expect.objectContaining({
@@ -146,7 +163,11 @@ describe("organization creation", () => {
       type: OrganizationType.OTHER,
       joinPolicy: OrganizationJoinPolicy.INVITE_ONLY,
       visibility: OrganizationVisibility.PRIVATE,
-      allowedEmailDomains: []
+      allowedEmailDomains: [],
+      accessCodeHash: "existing-hash",
+      accessCodeCiphertext: "existing-ciphertext",
+      accessCodeEnabled: true,
+      accessCodeUpdatedAt: new Date()
     });
 
     await expect(createOrganization({}, form("Duplicate", "Stockholm Club"))).resolves.toEqual({

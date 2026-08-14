@@ -454,6 +454,8 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 - `APP_BASE_URL`: Trusted public origin used for authentication callbacks and verification links. Production values must use HTTPS.
 - `BETTER_AUTH_SECRET`: Random server-only secret, at least 32 characters, used for authentication state and session cookies. `SESSION_SECRET` is accepted as a rollout fallback.
 - `SESSION_SECRET`: Legacy server-only secret retained during the session migration.
+- `ORGANIZATION_ACCESS_CODE_SECRET`: Server-only secret used to hash organization codes for lookup and validation.
+- `ORGANIZATION_CREDENTIAL_SECRET`: Server-only secret used to encrypt recoverable organization sharing codes. When omitted, a domain-separated key is derived from the access-code or authentication secret for rollout compatibility.
 - `SESSION_COOKIE_SECURE`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
 - `APP_ENABLE_HTTPS_HEADERS`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
 - `EMAIL_DELIVERY_MODE`: `console` for local development or `smtp` for real delivery. Production defaults to `smtp`.

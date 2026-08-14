@@ -4,14 +4,12 @@ import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { OrganizationPolicySettings } from "@/components/OrganizationPolicySettings";
-import { OrganizationInvitationManager } from "@/components/OrganizationInvitationManager";
 import {
   adminCancelOpenChallengesForPlayer,
   adminDeleteChallenge,
   adminDeleteMatch,
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
-import { revokeOrganizationInvitation } from "@/lib/organization-invitation-actions";
 import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
 import { requireOrganizationAdmin } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
@@ -47,8 +45,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
     challenges,
     openChallenges,
     availableGlobalUsers,
-    auditEvents,
-    invitations
+    auditEvents
   ] = await Promise.all([
     getLadder(season.id),
     prisma.membership.findMany({
@@ -91,14 +88,6 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
       },
       orderBy: { createdAt: "desc" },
       take: 30
-    }),
-    prisma.organizationInvitation.findMany({
-      where: { organizationId: organization.id },
-      include: {
-        creatorMembership: { include: { user: { select: { username: true } } } }
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50
     })
   ]);
   const activeMemberships = organizationMemberships.filter(
@@ -165,8 +154,6 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
             visibility={organization.visibility}
             joinPolicy={organization.joinPolicy}
             allowedEmailDomains={organization.allowedEmailDomains}
-            accessCodeEnabled={organization.accessCodeEnabled}
-            accessCodeUpdatedAt={organization.accessCodeUpdatedAt?.toISOString() ?? null}
           />
         ) : null}
 
@@ -216,58 +203,6 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
           </div>
         </section>
         ) : null}
-
-        <section className="section-band">
-          <div className="mb-4">
-            <p className="label">Invitations</p>
-            <h2 className="mt-1 text-2xl font-black">Invite organization members</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Invitation links work for new and existing accounts. Only a token hash is stored.
-            </p>
-          </div>
-          <OrganizationInvitationManager organizationSlug={organizationSlug} />
-          <div className="mt-6 grid gap-3 border-t border-line pt-5">
-            {invitations.length === 0 ? (
-              <EmptyState title="No invitations" body="Create a secure link when you are ready to invite players." />
-            ) : (
-              invitations.map((invitation) => {
-                const availability = invitationAvailability(invitation);
-
-                return (
-                  <article key={invitation.id} className="rounded-lg border border-line bg-white p-4">
-                    <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-black">Invitation created {compactDate(invitation.createdAt)}</p>
-                          <span className={invitationStatusClassName(availability)}>{availability}</span>
-                        </div>
-                        <p className="mt-1 text-sm text-muted">
-                          by {invitation.creatorMembership?.user.username ?? "former administrator"} · {invitation.useCount}
-                          {invitation.maxUses === null ? " uses" : ` of ${invitation.maxUses} uses`}
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-muted">
-                          Expires {invitation.expiresAt.toLocaleString()}
-                        </p>
-                      </div>
-                      {availability === "active" ? (
-                        <form action={revokeOrganizationInvitation}>
-                          <input type="hidden" name="organizationSlug" value={organizationSlug} />
-                          <input type="hidden" name="invitationId" value={invitation.id} />
-                          <ConfirmSubmitButton
-                            className="button-danger"
-                            confirmation="This invitation link will stop working immediately."
-                          >
-                            Revoke
-                          </ConfirmSubmitButton>
-                        </form>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </section>
 
         <section className="section-band">
           <div className="mb-4">
@@ -636,30 +571,4 @@ function joinMethodLabel(joinMethod: string) {
 
 function auditActionLabel(action: string) {
   return action.toLowerCase().replaceAll("_", " ");
-}
-
-function invitationAvailability(invitation: {
-  revokedAt: Date | null;
-  expiresAt: Date;
-  maxUses: number | null;
-  useCount: number;
-}) {
-  if (invitation.revokedAt) {
-    return "revoked";
-  }
-
-  if (invitation.expiresAt <= new Date()) {
-    return "expired";
-  }
-
-  if (invitation.maxUses !== null && invitation.useCount >= invitation.maxUses) {
-    return "exhausted";
-  }
-
-  return "active";
-}
-
-function invitationStatusClassName(status: string) {
-  const color = status === "active" ? "bg-green-50 text-success" : "bg-slate-100 text-muted";
-  return `rounded-full px-2.5 py-1 text-xs font-black capitalize ${color}`;
 }

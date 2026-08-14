@@ -10,6 +10,7 @@ import {
 import bcrypt from "bcryptjs";
 import { getSeasonName, getSeasonNumber, getSeasonWindowForNumber } from "../src/lib/fixed-seasons";
 import { hashOrganizationAccessCode, normalizeOrganizationAccessCode } from "../src/lib/organization-access-code";
+import { encryptOrganizationCredential } from "../src/lib/organization-credential";
 import { calculateMatchScore } from "../src/lib/scoring";
 
 const prisma = new PrismaClient();
@@ -37,6 +38,7 @@ async function main() {
       type: OrganizationType.WORKPLACE,
       joinPolicy: OrganizationJoinPolicy.ACCESS_CODE,
       accessCodeHash: configuredPolisenCode ? hashOrganizationAccessCode(configuredPolisenCode) : null,
+      accessCodeCiphertext: configuredPolisenCode ? encryptOrganizationCredential(configuredPolisenCode) : null,
       accessCodeEnabled: Boolean(configuredPolisenCode),
       accessCodeUpdatedAt: configuredPolisenCode ? new Date() : null
     }
