@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { VerificationControls } from "@/app/verify-email/VerificationControls";
 import { LogoMark } from "@/components/LogoMark";
+import { logout } from "@/lib/auth-actions";
 import { getSessionUser } from "@/lib/authz";
 import { postAuthenticationPath } from "@/lib/organization-paths";
 
@@ -30,7 +31,7 @@ export default async function VerifyEmailPage({
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg items-center justify-center">
-        <section className="section-band w-full text-center">
+        <section className="section-band relative w-full text-center">
           <div className="mb-5 flex justify-center">
             <LogoMark />
           </div>
@@ -62,7 +63,18 @@ export default async function VerifyEmailPage({
                 </p>
               ) : null}
               {sessionUser ? (
-                <VerificationControls email={sessionUser.user.email} nextPath={nextPath} />
+                <>
+                  <VerificationControls email={sessionUser.user.email} nextPath={nextPath} />
+                  <form action={logout} className="absolute right-4 top-4 sm:right-5 sm:top-5">
+                    <button
+                      aria-label="Back to main screen"
+                      className="inline-flex items-center rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-bold text-muted transition hover:border-court-500 hover:text-court-700"
+                      type="submit"
+                    >
+                      Back
+                    </button>
+                  </form>
+                </>
               ) : (
                 <Link className="button mt-6 inline-flex" href={`/login?next=${encodeURIComponent(nextPath)}`}>
                   Log in to resend
