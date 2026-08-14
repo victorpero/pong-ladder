@@ -17,7 +17,11 @@ describe("organization credential encryption", () => {
 
   it("rejects tampering and the wrong secret", () => {
     const encrypted = encryptOrganizationCredential("ABCD-2345-WXYZ", secret);
-    const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith("A") ? "B" : "A"}`;
+    const segments = encrypted.split(".");
+    const ciphertext = Buffer.from(segments[3], "base64url");
+    ciphertext[0] ^= 1;
+    segments[3] = ciphertext.toString("base64url");
+    const tampered = segments.join(".");
 
     expect(() => decryptOrganizationCredential(tampered, secret)).toThrow(OrganizationCredentialError);
     expect(() => decryptOrganizationCredential(encrypted, "different-secret")).toThrow(OrganizationCredentialError);
