@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { GoogleAuthButton } from "@/components/GoogleAuthButton";
 import { createAccount, login, type AuthFormState } from "@/lib/auth-actions";
+import { postAuthenticationPath } from "@/lib/organization-paths";
 
 const initialState: AuthFormState = {};
 
-export function AuthForms({ nextPath }: { nextPath: string }) {
+export function AuthForms({
+  nextPath,
+  googleEnabled,
+  oauthError
+}: {
+  nextPath: string;
+  googleEnabled: boolean;
+  oauthError?: string;
+}) {
   const [mode, setMode] = useState<"login" | "create">("login");
   const [loginState, loginAction] = useFormState(login, initialState);
   const [createState, createAction] = useFormState(createAccount, initialState);
@@ -33,6 +43,23 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
           Create account
         </button>
       </div>
+
+      {googleEnabled ? (
+        <div className="mt-5 grid gap-4">
+          <GoogleAuthButton callbackURL={postAuthenticationPath(nextPath)} />
+          <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-muted">
+            <span className="h-px flex-1 bg-line" />
+            or use a password
+            <span className="h-px flex-1 bg-line" />
+          </div>
+        </div>
+      ) : null}
+
+      {oauthError ? (
+        <p className="mt-4 rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">
+          Google sign-in could not be completed. If this email already has an account, log in with your password and link Google from Account.
+        </p>
+      ) : null}
 
       {mode === "login" ? (
         <form action={loginAction} className="mt-5 grid gap-4">
@@ -68,7 +95,7 @@ export function AuthForms({ nextPath }: { nextPath: string }) {
             <input className="field" name="password" type="password" autoComplete="new-password" minLength={8} required />
           </label>
           <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-            New accounts need admin approval before they can join a season or create challenges.
+            Verify your email, then join an organization using its code, invitation, or configured join policy.
           </p>
           {createState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{createState.error}</p> : null}
           <SubmitButton label="Create account" pendingLabel="Creating..." />

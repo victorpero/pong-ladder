@@ -1,18 +1,18 @@
 "use server";
 
-import { ChallengeStatus, Prisma } from "@prisma/client";
+import { ChallengeStatus, MembershipStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { z } from "zod";
-import { openPlayerChallengeWhere, pendingAccountWhere, playerChallengeWhere, playerMatchWhere, uniqueSeasonIds } from "@/lib/admin-cleanup";
+import { openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere } from "@/lib/admin-cleanup";
+import { requireOrganizationAdmin } from "@/lib/authz";
+import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
 import { addPlayerToSeason, alreadyInSeasonMessage } from "@/lib/season-membership";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
 const idSchema = z.string().min(1);
+const organizationSlugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const addSeasonPlayerSchema = z.object({
   seasonId: idSchema,
@@ -31,38 +31,29 @@ function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
 }
 
-function refreshAdmin() {
-  revalidatePath("/", "layout");
-  revalidatePath("/admin");
-  revalidatePath("/ladder");
-  revalidatePath("/players");
-  revalidatePath("/matches");
-  revalidatePath("/challenges");
-  revalidatePath("/teams");
-  revalidatePath("/account");
-  revalidatePath("/awaiting-approval");
+function refreshAdmin(organizationSlug: string) {
+  revalidatePath(organizationsPath);
+  revalidatePath(organizationPath(organizationSlug, "admin"));
+  revalidatePath(organizationPath(organizationSlug, "ladder"));
+  revalidatePath(organizationPath(organizationSlug, "players"));
+  revalidatePath(organizationPath(organizationSlug, "matches"));
+  revalidatePath(organizationPath(organizationSlug, "challenges"));
+  revalidatePath(organizationPath(organizationSlug, "teams"));
+  revalidatePath(organizationPath(organizationSlug, "account"));
 }
 
-async function requireAdmin() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
-
-  if (!session) {
-    redirect("/login?next=/admin");
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { isAdmin: true }
-  });
-
-  if (!user?.isAdmin) {
-    throw new Error("Admin access required.");
-  }
+async function requireAdmin(formData: FormData) {
+  const slug = organizationSlugSchema.parse(value(formData, "organizationSlug"));
+  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
 }
 
 async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: string) {
+  const season = await tx.season.findUniqueOrThrow({
+    where: { id: seasonId },
+    select: { organizationId: true }
+  });
   const players = await tx.seasonPlayer.findMany({
-    where: { seasonId },
+    where: { seasonId, organizationId: season.organizationId },
     orderBy: [{ joinedAt: "asc" }]
   });
 
@@ -78,7 +69,7 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
   );
 
   const matches = await tx.match.findMany({
-    where: { seasonId },
+    where: { seasonId, organizationId: season.organizationId },
     orderBy: [{ playedAt: "asc" }, { createdAt: "asc" }]
   });
 
@@ -123,35 +114,8 @@ async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: st
   await recalculateRanks(tx, seasonId);
 }
 
-export async function adminApproveUser(formData: FormData) {
-  await requireAdmin();
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.user.updateMany({
-    where: {
-      id: userId,
-      isAdmin: false,
-      isApproved: false
-    },
-    data: { isApproved: true }
-  });
-
-  refreshAdmin();
-}
-
-export async function adminDeclinePendingUser(formData: FormData) {
-  await requireAdmin();
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.user.deleteMany({
-    where: pendingAccountWhere(userId)
-  });
-
-  refreshAdmin();
-}
-
 export async function adminAddSeasonPlayer(_state: AdminFormState, formData: FormData): Promise<AdminFormState> {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
 
   const parsed = addSeasonPlayerSchema.safeParse({
     seasonId: value(formData, "seasonId"),
@@ -168,10 +132,10 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
     const { created, user } = await prisma.$transaction(async (tx) => {
       const season = await tx.season.findUnique({
         where: { id: seasonId },
-        select: { id: true, isActive: true }
+        select: { id: true, organizationId: true, isActive: true }
       });
 
-      if (!season) {
+      if (!season || season.organizationId !== organization.id) {
         throw new AdminActionError("That season no longer exists.");
       }
 
@@ -183,7 +147,9 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
       const user = await tx.user.findFirst({
         where: {
           id: userId,
-          OR: [{ isApproved: true }, { isAdmin: true }]
+          memberships: {
+            some: { organizationId: organization.id, status: MembershipStatus.ACTIVE }
+          }
         },
         select: { id: true, username: true }
       });
@@ -201,7 +167,7 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
       return { error: alreadyInSeasonMessage };
     }
 
-    refreshAdmin();
+    refreshAdmin(organization.slug);
 
     return { success: `${user.username} was added to the season.` };
   } catch (error) {
@@ -218,21 +184,22 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
 }
 
 export async function adminRemoveSeasonPlayer(formData: FormData) {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const seasonPlayerId = idSchema.parse(value(formData, "seasonPlayerId"));
 
   await prisma.$transaction(async (tx) => {
     const seasonPlayer = await tx.seasonPlayer.findUnique({
       where: { id: seasonPlayerId },
-      select: { id: true, seasonId: true, userId: true }
+      select: { id: true, organizationId: true, seasonId: true, userId: true }
     });
 
-    if (!seasonPlayer) {
+    if (!seasonPlayer || seasonPlayer.organizationId !== organization.id) {
       return;
     }
 
     await tx.match.deleteMany({
       where: {
+        organizationId: organization.id,
         seasonId: seasonPlayer.seasonId,
         ...playerMatchWhere(seasonPlayer.userId)
       }
@@ -240,6 +207,7 @@ export async function adminRemoveSeasonPlayer(formData: FormData) {
 
     await tx.challenge.deleteMany({
       where: {
+        organizationId: organization.id,
         seasonId: seasonPlayer.seasonId,
         ...playerChallengeWhere(seasonPlayer.userId)
       }
@@ -252,11 +220,11 @@ export async function adminRemoveSeasonPlayer(formData: FormData) {
     await rebuildSeasonStandings(tx, seasonPlayer.seasonId);
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
@@ -270,74 +238,24 @@ export async function adminCancelOpenChallengesForPlayer(formData: FormData) {
     }
 
     await tx.challenge.deleteMany({
-      where: openPlayerChallengeWhere(user.id)
+      where: { organizationId: organization.id, ...openPlayerChallengeWhere(user.id) }
     });
   });
 
-  refreshAdmin();
-}
-
-export async function adminDeletePlayer(formData: FormData) {
-  await requireAdmin();
-  const userId = idSchema.parse(value(formData, "userId"));
-
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: { id: true }
-    });
-
-    if (!user) {
-      return;
-    }
-
-    const [seasonPlayers, matches] = await Promise.all([
-      tx.seasonPlayer.findMany({
-        where: { userId: user.id },
-        select: { seasonId: true }
-      }),
-      tx.match.findMany({
-        where: playerMatchWhere(user.id),
-        select: { seasonId: true }
-      })
-    ]);
-    const seasonIds = uniqueSeasonIds([...seasonPlayers, ...matches]);
-
-    await tx.match.deleteMany({
-      where: playerMatchWhere(user.id)
-    });
-
-    await tx.challenge.deleteMany({
-      where: playerChallengeWhere(user.id)
-    });
-
-    await tx.seasonPlayer.deleteMany({
-      where: { userId: user.id }
-    });
-
-    await tx.user.delete({
-      where: { id: user.id }
-    });
-
-    for (const seasonId of seasonIds) {
-      await rebuildSeasonStandings(tx, seasonId);
-    }
-  });
-
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeleteMatch(formData: FormData) {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const matchId = idSchema.parse(value(formData, "matchId"));
 
   await prisma.$transaction(async (tx) => {
     const match = await tx.match.findUnique({
       where: { id: matchId },
-      select: { id: true, seasonId: true, challengeId: true }
+      select: { id: true, organizationId: true, seasonId: true, challengeId: true }
     });
 
-    if (!match) {
+    if (!match || match.organizationId !== organization.id) {
       return;
     }
 
@@ -358,11 +276,11 @@ export async function adminDeleteMatch(formData: FormData) {
     await rebuildSeasonStandings(tx, match.seasonId);
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }
 
 export async function adminDeleteChallenge(formData: FormData) {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
   const challengeId = idSchema.parse(value(formData, "challengeId"));
 
   await prisma.$transaction(async (tx) => {
@@ -370,6 +288,7 @@ export async function adminDeleteChallenge(formData: FormData) {
       where: { id: challengeId },
       select: {
         id: true,
+        organizationId: true,
         seasonId: true,
         match: {
           select: { id: true }
@@ -377,7 +296,7 @@ export async function adminDeleteChallenge(formData: FormData) {
       }
     });
 
-    if (!challenge) {
+    if (!challenge || challenge.organizationId !== organization.id) {
       return;
     }
 
@@ -396,5 +315,5 @@ export async function adminDeleteChallenge(formData: FormData) {
     }
   });
 
-  refreshAdmin();
+  refreshAdmin(organization.slug);
 }

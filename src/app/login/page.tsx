@@ -1,5 +1,7 @@
 import { AuthForms } from "@/app/login/AuthForms";
 import { LogoMark } from "@/components/LogoMark";
+import { googleAuthEnabled } from "@/lib/auth";
+import { organizationsPath } from "@/lib/organization-paths";
 
 function getSafeNextPath(next?: string | string[]) {
   const value = Array.isArray(next) ? next[0] : next;
@@ -8,11 +10,16 @@ function getSafeNextPath(next?: string | string[]) {
     return value;
   }
 
-  return "/ladder";
+  return organizationsPath;
 }
 
-export default function LoginPage({ searchParams }: { searchParams: { next?: string | string[] } }) {
+export default function LoginPage({
+  searchParams
+}: {
+  searchParams: { next?: string | string[]; error?: string | string[] };
+}) {
   const nextPath = getSafeNextPath(searchParams.next);
+  const oauthError = Array.isArray(searchParams.error) ? searchParams.error[0] : searchParams.error;
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
@@ -33,7 +40,7 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
           </div>
         </section>
 
-        <AuthForms nextPath={nextPath} />
+        <AuthForms nextPath={nextPath} googleEnabled={googleAuthEnabled} oauthError={oauthError} />
       </div>
     </main>
   );

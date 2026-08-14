@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "Challenge_organizationId_seasonId_challengerId_challengedId_sta" RENAME TO "Challenge_organizationId_seasonId_challengerId_challengedId_idx";

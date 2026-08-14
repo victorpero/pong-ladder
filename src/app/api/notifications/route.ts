@@ -1,12 +1,11 @@
 import { ChallengeStatus } from "@prisma/client";
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser, requireActiveMembership } from "@/lib/authz";
 import { getPublicPlayerName } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     consumeRateLimit(getClientRateLimitKey("api:notifications"), 120, 60 * 1000);
   } catch (error) {
@@ -17,23 +16,30 @@ export async function GET() {
     throw error;
   }
 
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const sessionUser = await getSessionUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { isAdmin: true, isApproved: true }
+  const organizationSlug = request.nextUrl.searchParams.get("organization") ?? "";
+  const organization = await prisma.organization.findUnique({
+    where: { slug: organizationSlug },
+    select: { id: true }
   });
 
-  if (!user?.isApproved && !user?.isAdmin) {
+  if (!organization) {
+    return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
+  }
+  try {
+    await requireActiveMembership(sessionUser.user.id, organization.id);
+  } catch {
     return NextResponse.json({ pendingChallenges: 0, challenges: [] }, { status: 403 });
   }
 
   const where = {
-    challengedId: session.sub,
+    organizationId: organization.id,
+    challengedId: sessionUser.user.id,
     status: ChallengeStatus.Pending
   };
 

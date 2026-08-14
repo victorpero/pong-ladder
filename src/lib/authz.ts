@@ -1,25 +1,34 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { MembershipRole, MembershipStatus } from "@prisma/client";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { organizationPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import type { SessionPayload } from "@/lib/session";
 
-export const awaitingApprovalPath = "/awaiting-approval";
+export const verifyEmailPath = "/verify-email";
+
+export class OrganizationAccessError extends Error {
+  constructor(message = "Organization access required.") {
+    super(message);
+    this.name = "OrganizationAccessError";
+  }
+}
 
 export async function getSessionUser() {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const authSession = await auth.api.getSession({ headers: await headers() });
 
-  if (!session) {
+  if (!authSession) {
     return null;
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: session.sub },
+    where: { id: authSession.user.id },
     select: {
       id: true,
       username: true,
       email: true,
-      isAdmin: true,
-      isApproved: true
+      emailVerifiedAt: true
     }
   });
 
@@ -27,7 +36,56 @@ export async function getSessionUser() {
     return null;
   }
 
+  const session: SessionPayload = {
+    sub: user.id,
+    username: user.username,
+    email: user.email,
+    iat: Math.floor(authSession.session.createdAt.getTime() / 1000),
+    exp: Math.floor(authSession.session.expiresAt.getTime() / 1000)
+  };
+
   return { session, user };
+}
+
+export async function requireActiveMembership(userId: string, organizationId: string) {
+  const membership = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: {
+        userId,
+        organizationId
+      }
+    },
+    include: {
+      organization: true,
+      user: { select: { emailVerifiedAt: true } }
+    }
+  });
+
+  if (!membership || membership.status !== MembershipStatus.ACTIVE || !membership.user.emailVerifiedAt) {
+    throw new OrganizationAccessError();
+  }
+
+  return membership;
+}
+
+export async function requireOrgAdmin(userId: string, organizationId: string) {
+  const membership = await requireActiveMembership(userId, organizationId);
+
+  if (membership.role !== MembershipRole.OWNER && membership.role !== MembershipRole.ADMIN) {
+    throw new OrganizationAccessError("Organization administrator access required.");
+  }
+
+  return membership;
+}
+
+export async function requireOrgOwner(userId: string, organizationId: string) {
+  const membership = await requireActiveMembership(userId, organizationId);
+
+  if (membership.role !== MembershipRole.OWNER) {
+    throw new OrganizationAccessError("Organization owner access required.");
+  }
+
+  return membership;
 }
 
 export async function requireAuthenticatedUser(nextPath: string) {
@@ -40,22 +98,51 @@ export async function requireAuthenticatedUser(nextPath: string) {
   return sessionUser;
 }
 
-export async function requireActiveUser(nextPath: string) {
+export async function requireOrganizationUser(organizationSlug: string, nextPath = organizationPath(organizationSlug)) {
   const sessionUser = await requireAuthenticatedUser(nextPath);
 
-  if (!sessionUser.user.isApproved && !sessionUser.user.isAdmin) {
-    redirect(awaitingApprovalPath);
+  if (!sessionUser.user.emailVerifiedAt) {
+    redirect(`${verifyEmailPath}?next=${encodeURIComponent(nextPath)}`);
   }
 
-  return sessionUser;
+  const membership = await prisma.membership.findFirst({
+    where: {
+      userId: sessionUser.user.id,
+      status: MembershipStatus.ACTIVE,
+      organization: { slug: organizationSlug }
+    },
+    include: { organization: true }
+  });
+
+  if (!membership) {
+    notFound();
+  }
+
+  return { ...sessionUser, organization: membership.organization, membership };
 }
 
-export async function requireAdminUser() {
-  const sessionUser = await requireAuthenticatedUser("/admin");
+export async function requireOrganizationAdmin(
+  organizationSlug: string,
+  nextPath = organizationPath(organizationSlug, "admin")
+) {
+  const context = await requireOrganizationUser(organizationSlug, nextPath);
 
-  if (!sessionUser.user.isAdmin) {
-    throw new Error("Admin access required.");
+  if (context.membership.role !== MembershipRole.OWNER && context.membership.role !== MembershipRole.ADMIN) {
+    notFound();
   }
 
-  return sessionUser;
+  return context;
+}
+
+export async function requireOrganizationOwner(
+  organizationSlug: string,
+  nextPath = organizationPath(organizationSlug, "admin")
+) {
+  const context = await requireOrganizationUser(organizationSlug, nextPath);
+
+  if (context.membership.role !== MembershipRole.OWNER) {
+    notFound();
+  }
+
+  return context;
 }

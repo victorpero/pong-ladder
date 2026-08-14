@@ -1,15 +1,16 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { awaitingApprovalPath } from "@/lib/authz";
+import { auth } from "@/lib/auth";
+import { getSessionUser, verifyEmailPath } from "@/lib/authz";
+import { issueEmailVerification } from "@/lib/email-verification";
+import { organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
-import { createSessionToken, SESSION_COOKIE_NAME, sessionCookieOptions, verifySessionToken } from "@/lib/session";
 
 export type AuthFormState = {
   error?: string;
@@ -25,13 +26,13 @@ const createAccountSchema = z.object({
   username: z.string().trim().min(2, "Username must be at least 2 characters.").max(30),
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
   email: z.string().trim().email("Enter a valid email address."),
-  password: z.string().min(8, "Password must be at least 8 characters.")
+  password: z.string().min(8, "Password must be at least 8 characters.").max(128)
 });
 
 const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(8, "Current password must be at least 8 characters."),
-    newPassword: z.string().min(8, "New password must be at least 8 characters."),
+    newPassword: z.string().min(8, "New password must be at least 8 characters.").max(128),
     confirmPassword: z.string().min(8, "Confirm password must be at least 8 characters.")
   })
   .refine((value) => value.newPassword === value.confirmPassword, {
@@ -45,46 +46,45 @@ function getValue(formData: FormData, key: string) {
 
 function getSafeRedirectPath(formData: FormData) {
   const nextPath = getValue(formData, "next");
-
-  if (nextPath.startsWith("/") && !nextPath.startsWith("//")) {
-    return nextPath;
-  }
-
-  return "/ladder";
+  const safePath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : organizationsPath;
+  return postAuthenticationPath(safePath);
 }
 
 function authError(error: unknown): AuthFormState {
   if (error instanceof z.ZodError) {
-    return { error: error.errors[0]?.message ?? "Check the form and try again." };
-  }
-
-  if (error instanceof Error && error.message.includes("SESSION_SECRET")) {
-    return { error: "Session secret is not configured. Add SESSION_SECRET to your environment." };
+    return { error: error.issues[0]?.message ?? "Check the form and try again." };
   }
 
   if (error instanceof RateLimitError) {
     return { error: error.message };
   }
 
+  if (error instanceof Error && /invalid email or password|invalid password/i.test(error.message)) {
+    return { error: "Invalid email, username, or password." };
+  }
+
   return { error: "Something went wrong. Please try again." };
 }
 
-async function setSession(user: { id: string; username: string; email: string }) {
-  const token = await createSessionToken({
-    sub: user.id,
-    username: user.username,
-    email: user.email
+async function postSignInPath(userId: string, requestedPath: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { emailVerifiedAt: true }
   });
 
-  cookies().set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+  if (!user?.emailVerifiedAt) {
+    return `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
+  }
+
+  return postAuthenticationPath(requestedPath);
 }
 
 export async function login(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  let nextPath = getSafeRedirectPath(formData);
+  const requestedPath = getSafeRedirectPath(formData);
+  let destination = requestedPath;
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:login"), 30, 5 * 60 * 1000);
-
     const parsed = loginSchema.parse({
       identifier: getValue(formData, "identifier"),
       password: getValue(formData, "password")
@@ -93,69 +93,83 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 
     const user = await prisma.user.findFirst({
       where: {
-        OR: [{ email: parsed.identifier.toLowerCase() }, { username: parsed.identifier }]
-      }
+        OR: [
+          { email: { equals: parsed.identifier, mode: "insensitive" } },
+          { username: { equals: parsed.identifier, mode: "insensitive" } }
+        ]
+      },
+      select: { id: true, email: true }
     });
 
-    if (!user || !(await bcrypt.compare(parsed.password, user.passwordHash))) {
+    if (!user) {
       return { error: "Invalid email, username, or password." };
     }
 
-    await setSession(user);
-    if (!user.isApproved && !user.isAdmin) {
-      nextPath = awaitingApprovalPath;
-    }
+    const result = await auth.api.signInEmail({
+      headers: await headers(),
+      body: { email: user.email, password: parsed.password, rememberMe: true }
+    });
+    destination = await postSignInPath(result.user.id, requestedPath);
   } catch (error) {
     return authError(error);
   }
 
-  redirect(nextPath);
+  redirect(destination);
 }
 
 export async function createAccount(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const requestedPath = getSafeRedirectPath(formData);
+  let destination = `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
+
   try {
     consumeRateLimit(getClientRateLimitKey("auth:create-account"), 5, 60 * 60 * 1000);
-
     const parsed = createAccountSchema.parse({
       username: getValue(formData, "username"),
       fullName: getValue(formData, "fullName"),
-      email: getValue(formData, "email"),
+      email: getValue(formData, "email").toLowerCase(),
       password: getValue(formData, "password")
     });
 
-    const passwordHash = await bcrypt.hash(parsed.password, 12);
-    const user = await prisma.user.create({
-      data: {
+    const result = await auth.api.signUpEmail({
+      headers: await headers(),
+      body: {
+        name: parsed.fullName,
+        email: parsed.email,
+        password: parsed.password,
         username: parsed.username,
-        fullName: parsed.fullName,
-        email: parsed.email.toLowerCase(),
-        passwordHash,
-        isApproved: false
+        rememberMe: true
       }
     });
 
-    await setSession(user);
+    try {
+      await issueEmailVerification(result.user.id, result.user.email, requestedPath);
+    } catch {
+      destination = `${verifyEmailPath}?delivery=failed&next=${encodeURIComponent(requestedPath)}`;
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "A player with that username or email already exists." };
+    }
+
+    if (error instanceof Error && /already exists|user already/i.test(error.message)) {
       return { error: "A player with that username or email already exists." };
     }
 
     return authError(error);
   }
 
-  redirect(awaitingApprovalPath);
+  redirect(destination);
 }
 
 export async function changePassword(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  const session = await verifySessionToken(cookies().get(SESSION_COOKIE_NAME)?.value);
+  const sessionUser = await getSessionUser();
 
-  if (!session) {
+  if (!sessionUser) {
     redirect("/login?next=/account");
   }
 
   try {
-    consumeRateLimit(getClientRateLimitKey("auth:change-password", session.sub), 5, 15 * 60 * 1000);
-
+    consumeRateLimit(getClientRateLimitKey("auth:change-password", sessionUser.user.id), 5, 15 * 60 * 1000);
     const parsed = changePasswordSchema.parse({
       currentPassword: getValue(formData, "currentPassword"),
       newPassword: getValue(formData, "newPassword"),
@@ -166,34 +180,27 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
       return { error: "New password must be different from your current password." };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.sub },
-      select: { id: true, passwordHash: true, isApproved: true, isAdmin: true }
-    });
-
-    if (!user || !(await bcrypt.compare(parsed.currentPassword, user.passwordHash))) {
-      return { error: "Current password is incorrect." };
-    }
-
-    if (!user.isApproved && !user.isAdmin) {
-      return { error: "Your account is awaiting admin approval." };
-    }
-
-    const passwordHash = await bcrypt.hash(parsed.newPassword, 12);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash }
+    await auth.api.changePassword({
+      headers: await headers(),
+      body: {
+        currentPassword: parsed.currentPassword,
+        newPassword: parsed.newPassword,
+        revokeOtherSessions: true
+      }
     });
 
     revalidatePath("/account");
     return { success: "Password updated." };
   } catch (error) {
+    if (error instanceof Error && /incorrect|invalid password/i.test(error.message)) {
+      return { error: "Current password is incorrect." };
+    }
+
     return authError(error);
   }
 }
 
 export async function logout() {
-  cookies().delete(SESSION_COOKIE_NAME);
+  await auth.api.signOut({ headers: await headers() });
   redirect("/login");
 }

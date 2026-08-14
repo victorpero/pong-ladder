@@ -2,22 +2,23 @@ import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { matchFeedOrderBy } from "@/lib/match-feed";
 
-export async function getActiveSeason() {
-  return prisma.$transaction((tx) => ensureCurrentSeason(tx));
+export async function getActiveSeason(organizationId: string) {
+  return prisma.$transaction(async (tx) => {
+    return ensureCurrentSeason(tx, organizationId);
+  });
 }
 
 export async function getLadder(seasonId: string) {
   const players = await prisma.seasonPlayer.findMany({
     where: {
       seasonId,
-      user: {
-        OR: [{ isApproved: true }, { isAdmin: true }]
-      }
+      membership: { status: "ACTIVE" }
     },
     include: {
       user: {
-        include: { team: true }
-      }
+        select: { id: true, username: true, fullName: true, email: true, createdAt: true, updatedAt: true }
+      },
+      membership: { include: { team: true } }
     },
     orderBy: [{ currentRank: "asc" }]
   });
@@ -43,6 +44,7 @@ export async function getLadder(seasonId: string) {
 
     return {
       ...player,
+      user: { ...player.user, team: player.membership.team },
       wins: winCount,
       losses: lossCount,
       matchesPlayed: winCount + lossCount
@@ -101,28 +103,26 @@ export async function getTeamLadder(seasonId: string) {
  * profile can derive all-time, seasonal and head-to-head statistics without
  * querying per opponent.
  */
-export async function getPlayerMatches(userId: string) {
+export async function getPlayerMatches(userId: string, organizationId: string) {
   return prisma.match.findMany({
     where: {
+      organizationId,
       OR: [{ winnerId: userId }, { loserId: userId }],
-      winner: {
-        OR: [{ isApproved: true }, { isAdmin: true }]
-      },
-      loser: {
-        OR: [{ isApproved: true }, { isAdmin: true }]
-      }
+      season: { organizationId }
     },
     include: { winner: true, loser: true },
     orderBy: matchFeedOrderBy
   });
 }
 
-export async function getUsers() {
+export async function getUsers(organizationId: string) {
   return prisma.user.findMany({
     where: {
-      OR: [{ isApproved: true }, { isAdmin: true }]
+      memberships: {
+        some: { organizationId, status: "ACTIVE" }
+      }
     },
-    include: { team: true },
+    include: { memberships: { where: { organizationId }, include: { team: true } } },
     orderBy: { username: "asc" }
-  });
+  }).then((users) => users.map((user) => ({ ...user, team: user.memberships[0]?.team ?? null })));
 }

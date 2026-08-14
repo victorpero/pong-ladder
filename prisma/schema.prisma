@@ -15,119 +15,387 @@ enum ChallengeStatus {
   Forfeit
 }
 
+enum OrganizationType {
+  WORKPLACE
+  SPORTS_CLUB
+  SCHOOL
+  FRIENDS
+  OTHER
+}
+
+enum OrganizationVisibility {
+  PRIVATE
+  DISCOVERABLE
+}
+
+enum OrganizationAuditAction {
+  ORGANIZATION_CREATED
+  SETTINGS_UPDATED
+  ACCESS_CODE_GENERATED
+  ACCESS_CODE_ROTATED
+  ACCESS_CODE_DISABLED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  PLAYER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+  REMOVED
+}
+
+enum MembershipAuditAction {
+  APPROVED
+  REJECTED
+  SUSPENDED
+  REACTIVATED
+  REMOVED
+  MEMBER_ADDED
+  ROLE_CHANGED
+  OWNERSHIP_TRANSFERRED
+}
+
+enum OrganizationJoinPolicy {
+  OPEN
+  ADMIN_APPROVAL
+  INVITE_ONLY
+  EMAIL_DOMAIN
+  ACCESS_CODE
+}
+
+enum MembershipJoinMethod {
+  LEGACY
+  ADMIN_CREATED
+  OPEN_JOIN
+  ADMIN_REQUEST
+  INVITATION
+  EMAIL_DOMAIN
+  ACCESS_CODE
+}
+
+model Organization {
+  id                    String                   @id @default(cuid())
+  slug                  String                   @unique
+  name                  String
+  type                  OrganizationType
+  visibility            OrganizationVisibility   @default(PRIVATE)
+  joinPolicy            OrganizationJoinPolicy   @default(ADMIN_APPROVAL)
+  allowedEmailDomains   String[]                 @default([])
+  accessCodeHash        String?                  @unique
+  accessCodeCiphertext  String?
+  accessCodeEnabled     Boolean                  @default(false)
+  accessCodeUpdatedAt   DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  memberships           Membership[]
+  seasons               Season[]
+  teams                 Team[]
+  membershipAuditEvents MembershipAuditEvent[]
+  invitations           OrganizationInvitation[]
+  invitationRedemptions InvitationRedemption[]
+  auditEvents           OrganizationAuditEvent[]
+
+  @@index([name])
+  @@index([visibility])
+}
+
+model Membership {
+  id                      String                   @id @default(cuid())
+  userId                  String
+  organizationId          String
+  role                    MembershipRole           @default(PLAYER)
+  status                  MembershipStatus         @default(PENDING)
+  displayName             String?
+  teamId                  String?
+  joinMethod              MembershipJoinMethod     @default(LEGACY)
+  activatedAt             DateTime?
+  reviewedAt              DateTime?
+  reviewedById            String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                    Team?                    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  seasonPlayers           SeasonPlayer[]
+  auditEvents             MembershipAuditEvent[]
+  createdInvitations      OrganizationInvitation[] @relation("InvitationCreator")
+  organizationAuditEvents OrganizationAuditEvent[] @relation("OrganizationAuditActor")
+
+  @@unique([userId, organizationId])
+  @@unique([id, userId, organizationId])
+  @@index([organizationId, status, role])
+  @@index([userId, status])
+  @@index([organizationId, joinMethod])
+  @@index([teamId])
+}
+
 model User {
-  id              String         @id @default(cuid())
-  username        String         @unique
-  fullName        String
-  email           String         @unique
-  passwordHash    String
-  isAdmin         Boolean        @default(false)
-  isApproved      Boolean        @default(false)
-  teamId          String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  team            Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  seasonPlayers   SeasonPlayer[]
-  wonMatches      Match[]        @relation("WinnerMatches")
-  lostMatches     Match[]        @relation("LoserMatches")
-  challengesMade  Challenge[]    @relation("Challenger")
-  challengesTaken Challenge[]    @relation("Challenged")
+  id                             String                   @id @default(cuid())
+  username                       String                   @unique
+  fullName                       String
+  email                          String                   @unique
+  emailVerified                  Boolean                  @default(false)
+  emailVerifiedAt                DateTime?
+  image                          String?
+  passwordHash                   String?
+  isAdmin                        Boolean                  @default(false)
+  isApproved                     Boolean                  @default(false)
+  createdAt                      DateTime                 @default(now())
+  updatedAt                      DateTime                 @updatedAt
+  seasonPlayers                  SeasonPlayer[]
+  wonMatches                     Match[]                  @relation("WinnerMatches")
+  lostMatches                    Match[]                  @relation("LoserMatches")
+  challengesMade                 Challenge[]              @relation("Challenger")
+  challengesTaken                Challenge[]              @relation("Challenged")
+  memberships                    Membership[]
+  authSessions                   Session[]
+  authAccounts                   Account[]
+  emailVerificationTokens        EmailVerificationToken[]
+  membershipAuditEventsAsActor   MembershipAuditEvent[]   @relation("MembershipAuditActor")
+  membershipAuditEventsAsSubject MembershipAuditEvent[]   @relation("MembershipAuditSubject")
+  invitationRedemptions          InvitationRedemption[]
 
   @@index([username])
   @@index([fullName])
   @@index([isApproved])
-  @@index([teamId])
 }
 
-model Team {
-  id        String   @id @default(cuid())
-  name      String   @unique
+model MembershipAuditEvent {
+  id             String                @id @default(cuid())
+  organizationId String
+  membershipId   String?
+  subjectUserId  String
+  actorUserId    String?
+  action         MembershipAuditAction
+  fromStatus     MembershipStatus?
+  toStatus       MembershipStatus?
+  fromRole       MembershipRole?
+  toRole         MembershipRole?
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership     Membership?           @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  subjectUser    User                  @relation("MembershipAuditSubject", fields: [subjectUserId], references: [id], onDelete: Restrict)
+  actorUser      User?                 @relation("MembershipAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([membershipId])
+  @@index([subjectUserId])
+  @@index([actorUserId])
+}
+
+model OrganizationAuditEvent {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  actorMembershipId String?
+  action            OrganizationAuditAction
+  createdAt         DateTime                @default(now())
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorMembership   Membership?             @relation("OrganizationAuditActor", fields: [actorMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorMembershipId])
+}
+
+model OrganizationInvitation {
+  id                  String                 @id @default(cuid())
+  organizationId      String
+  creatorMembershipId String?
+  tokenHash           String                 @unique
+  expiresAt           DateTime
+  maxUses             Int?
+  useCount            Int                    @default(0)
+  revokedAt           DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creatorMembership   Membership?            @relation("InvitationCreator", fields: [creatorMembershipId], references: [id], onDelete: SetNull)
+  redemptions         InvitationRedemption[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, revokedAt, expiresAt])
+  @@index([creatorMembershipId])
+}
+
+model InvitationRedemption {
+  id             String                 @id @default(cuid())
+  invitationId   String
+  organizationId String
+  userId         String
+  redeemedAt     DateTime               @default(now())
+  invitation     OrganizationInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationId, userId])
+  @@index([organizationId, redeemedAt])
+  @@index([userId, redeemedAt])
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  members   User[]
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([name])
-}
-
-model Season {
-  id            String         @id @default(cuid())
-  name          String
-  year          Int
-  seasonNumber  Int
-  startsAt      DateTime
-  endsAt        DateTime?
-  isActive      Boolean        @default(false)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  players       SeasonPlayer[]
-  matches       Match[]
-  challenges    Challenge[]
-
-  @@index([isActive])
-  @@index([year])
-  @@index([year, seasonNumber])
-}
-
-model SeasonPlayer {
-  id          String   @id @default(cuid())
-  seasonId    String
-  userId      String
-  points      Int      @default(0)
-  currentRank Int
-  joinedAt    DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  season      Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([seasonId, userId])
-  @@unique([seasonId, currentRank])
-  @@index([seasonId, points])
   @@index([userId])
 }
 
-model Match {
-  id                  String     @id @default(cuid())
-  seasonId            String
-  winnerId            String
-  loserId             String
-  winnerSets          Int
-  loserSets           Int
-  winnerPointsBefore  Int
-  loserPointsBefore   Int
-  winnerPointsAfter   Int
-  loserPointsAfter    Int
-  playedAt            DateTime   @default(now())
-  challengeId         String?    @unique
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-  season              Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  winner              User       @relation("WinnerMatches", fields: [winnerId], references: [id])
-  loser               User       @relation("LoserMatches", fields: [loserId], references: [id])
-  challenge           Challenge? @relation(fields: [challengeId], references: [id])
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([seasonId, playedAt])
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  userId     String
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        Membership[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, name])
+}
+
+model Season {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  year           Int
+  seasonNumber   Int
+  startsAt       DateTime
+  endsAt         DateTime?
+  isActive       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  players        SeasonPlayer[]
+  matches        Match[]
+  challenges     Challenge[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, year, seasonNumber])
+  @@index([organizationId, isActive])
+  @@index([organizationId, year])
+}
+
+model SeasonPlayer {
+  id             String     @id @default(cuid())
+  organizationId String
+  seasonId       String
+  membershipId   String
+  userId         String
+  points         Int        @default(0)
+  currentRank    Int
+  joinedAt       DateTime   @default(now())
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  season         Season     @relation(fields: [seasonId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  membership     Membership @relation(fields: [membershipId, userId, organizationId], references: [id, userId, organizationId], onDelete: Restrict)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, userId])
+  @@unique([seasonId, currentRank])
+  @@index([organizationId, seasonId, points])
+  @@index([organizationId, userId])
+  @@index([membershipId])
+}
+
+model Match {
+  id                 String     @id @default(cuid())
+  organizationId     String
+  seasonId           String
+  winnerId           String
+  loserId            String
+  winnerSets         Int
+  loserSets          Int
+  winnerPointsBefore Int
+  loserPointsBefore  Int
+  winnerPointsAfter  Int
+  loserPointsAfter   Int
+  playedAt           DateTime   @default(now())
+  challengeId        String?    @unique
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  season             Season     @relation(fields: [seasonId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  winner             User       @relation("WinnerMatches", fields: [winnerId], references: [id])
+  loser              User       @relation("LoserMatches", fields: [loserId], references: [id])
+  challenge          Challenge? @relation(fields: [challengeId], references: [id])
+
+  @@index([organizationId, seasonId, playedAt])
   @@index([winnerId])
   @@index([loserId])
 }
 
 model Challenge {
-  id            String          @id @default(cuid())
-  seasonId      String
-  challengerId  String
-  challengedId  String
-  status        ChallengeStatus @default(Pending)
-  declinedCount Int             @default(0)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  completedAt   DateTime?
-  season        Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  challenger    User            @relation("Challenger", fields: [challengerId], references: [id])
-  challenged    User            @relation("Challenged", fields: [challengedId], references: [id])
-  match         Match?
+  id             String          @id @default(cuid())
+  organizationId String
+  seasonId       String
+  challengerId   String
+  challengedId   String
+  status         ChallengeStatus @default(Pending)
+  declinedCount  Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  completedAt    DateTime?
+  season         Season          @relation(fields: [seasonId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  challenger     User            @relation("Challenger", fields: [challengerId], references: [id])
+  challenged     User            @relation("Challenged", fields: [challengedId], references: [id])
+  match          Match?
 
-  @@index([seasonId, status])
-  @@index([seasonId, challengerId, challengedId, status])
+  @@index([organizationId, seasonId, status])
+  @@index([organizationId, seasonId, challengerId, challengedId, status])
   @@index([challengerId])
   @@index([challengedId])
 }

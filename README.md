@@ -121,7 +121,7 @@ docker compose exec app npm run prisma:seed
 
 ## Homelab Kubernetes Deployment
 
-This deployment targets the Talos homelab cluster behind Traefik, MetalLB, Technitium DNS, cert-manager, and the `step-ca` ClusterIssuer. PostgreSQL runs inside Kubernetes as a separate StatefulSet with persistent storage.
+This deployment targets the Talos homelab cluster with separate internal and public Traefik ingress classes, cert-manager, the internal `step-ca` issuer, and the public `letsencrypt-prod` issuer. PostgreSQL runs inside Kubernetes as a separate StatefulSet with persistent storage.
 
 Application details detected from this repository:
 
@@ -132,7 +132,9 @@ Application details detected from this repository:
 - Container port: `3000`.
 - Database: PostgreSQL via Prisma.
 - Migration command: `npx prisma migrate deploy`.
-- Required runtime secret: `SESSION_SECRET`, at least 32 characters.
+- Required runtime secrets: `SESSION_SECRET` and `BETTER_AUTH_SECRET`, each at least 32 characters. `SESSION_SECRET` remains a temporary fallback during rollout.
+- Required production origin: `APP_BASE_URL`, including the HTTPS scheme and public host.
+- Email verification delivery: SMTP in production; console delivery is available for local development.
 - HTTPS runtime settings: `SESSION_COOKIE_SECURE=true` and `APP_ENABLE_HTTPS_HEADERS=true`.
 
 The Kubernetes manifests live in `deploy/kubernetes/` and create:
@@ -144,12 +146,13 @@ The Kubernetes manifests live in `deploy/kubernetes/` and create:
 - App Deployment: `pong-ladder`
 - App Service: `pong-ladder`
 - Migration Job: `pong-ladder-migrate`
-- Certificate: `pong-ladder-home-arpa`
-- TLS secret: `pong-ladder-home-arpa-tls`
-- Ingress: `pong-ladder`
-- Hostname: `pong-ladder.home.arpa`
-- cert-manager issuer: `step-ca` `ClusterIssuer`
-- Ingress class: `traefik`
+- Internal certificate and TLS secret: `pong-ladder-home-arpa`, `pong-ladder-home-arpa-tls`
+- Internal ingress and hostname: `pong-ladder`, `pong-ladder.home.arpa`
+- Public certificate and TLS secret: `pongladder-com`, `pongladder-com-tls`
+- Public ingress and hostnames: `pong-ladder-public`, `pongladder.com`, `www.pongladder.com`
+- cert-manager issuers: `step-ca` and `letsencrypt-prod` `ClusterIssuer` resources
+- Ingress classes: `traefik` and `traefik-public`
+- Canonical application origin: `https://pongladder.com`
 
 The app image is:
 
@@ -169,10 +172,12 @@ The app `DATABASE_URL` should use this format:
 postgresql://pong:<STRONG_RANDOM_PASSWORD>@postgres.pingpong.svc.cluster.local:5432/pong_ladder?schema=public
 ```
 
-The manifests assume DNS is already covered by the existing wildcard:
+The manifests assume internal DNS is covered by the existing wildcard and public DNS points to the public Traefik load balancer:
 
 ```text
 *.home.arpa -> 192.168.20.230
+pongladder.com -> public Traefik
+www.pongladder.com -> public Traefik
 ```
 
 ### Prerequisites
@@ -181,7 +186,7 @@ The manifests assume DNS is already covered by the existing wildcard:
 - A GitHub token that can publish to GHCR.
 - `kubectl` configured for the Talos cluster.
 - `local-path-provisioner` installed as the default StorageClass.
-- Existing Traefik, MetalLB, cert-manager, `step-ca` ClusterIssuer, and Technitium wildcard DNS.
+- Existing `traefik` and `traefik-public` ingress classes, cert-manager, `step-ca` and `letsencrypt-prod` ClusterIssuers, and the required internal and public DNS records.
 
 Set the kubeconfig for this homelab:
 
@@ -287,16 +292,7 @@ imagePullSecrets:
   - name: ghcr-pull-secret
 ```
 
-Deploy the app, certificate, and ingress:
-
-```bash
-kubectl apply -f deploy/kubernetes/deployment.yaml
-kubectl apply -f deploy/kubernetes/service.yaml
-kubectl apply -f deploy/kubernetes/certificate.yaml
-kubectl apply -f deploy/kubernetes/ingress.yaml
-```
-
-You can also apply everything after both secrets exist:
+Deploy the app, certificates, middleware, and ingresses after both secrets exist:
 
 ```bash
 kubectl apply -k deploy/kubernetes
@@ -388,6 +384,8 @@ Test HTTPS:
 
 ```bash
 curl -I https://pong-ladder.home.arpa
+curl -I https://pongladder.com
+curl -I https://www.pongladder.com
 ```
 
 Expected results:
@@ -396,9 +394,10 @@ Expected results:
 - Postgres PVC is `Bound`.
 - Pong Ladder pod is `Running`.
 - Pong Ladder can connect to Postgres.
-- Certificate is `Ready=True`.
-- DNS resolves to `192.168.20.230`.
-- `https://pong-ladder.home.arpa` loads in a browser.
+- Both certificates are `Ready=True`.
+- Internal DNS resolves to `192.168.20.230` and public DNS resolves to the public Traefik endpoint.
+- `https://pong-ladder.home.arpa` and `https://pongladder.com` load in a browser.
+- `https://www.pongladder.com` redirects to `https://pongladder.com`.
 
 ### Troubleshooting
 
@@ -407,7 +406,7 @@ Expected results:
 - Postgres pod is `Pending`: check `kubectl get pvc -n pingpong`, the default StorageClass, and `local-path-provisioner`.
 - Data disappears: Postgres data must be persisted by the PVC. Do not delete `postgres-data-postgres-0` unless intentionally wiping the database.
 - `localhost` in `DATABASE_URL`: inside the app pod, `localhost` means the app pod itself, not the Postgres pod. Use `postgres.pingpong.svc.cluster.local`, or simply `postgres` inside the same namespace.
-- Certificate stuck pending: check cert-manager events, `step-ca` ClusterIssuer health, DNS resolution inside Kubernetes, CoreDNS forwarding for `home.arpa`, and the Traefik ingress class.
+- Certificate stuck pending: check cert-manager events, the relevant `step-ca` or `letsencrypt-prod` ClusterIssuer, DNS resolution, and the selected Traefik ingress class.
 - Traefik returns 404: check the Ingress host, service name, service port, and whether DNS points to the Traefik LoadBalancer.
 - Connection refused: check whether the app is listening on port `3000` and whether the Service `targetPort` matches the container port.
 
@@ -449,13 +448,24 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 
 - `DATABASE_URL`: PostgreSQL connection string used by Prisma.
 - `NEXT_PUBLIC_APP_NAME`: Public app name for client-visible configuration.
-- `SESSION_SECRET`: Random server-only secret, at least 32 characters, used to sign HTTP-only session cookies.
+- `APP_BASE_URL`: Trusted public origin used for authentication callbacks and verification links. Production values must use HTTPS.
+- `BETTER_AUTH_SECRET`: Random server-only secret, at least 32 characters, used for authentication state and session cookies. `SESSION_SECRET` is accepted as a rollout fallback.
+- `SESSION_SECRET`: Legacy server-only secret retained during the session migration.
+- `ORGANIZATION_ACCESS_CODE_SECRET`: Server-only secret used to hash organization codes for lookup and validation.
+- `ORGANIZATION_CREDENTIAL_SECRET`: Server-only secret used to encrypt recoverable organization sharing codes. When omitted, a domain-separated key is derived from the access-code or authentication secret for rollout compatibility.
 - `SESSION_COOKIE_SECURE`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
 - `APP_ENABLE_HTTPS_HEADERS`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
+- `EMAIL_DELIVERY_MODE`: `console` for local development or `smtp` for real delivery. Production defaults to `smtp`.
+- `EMAIL_FROM`: Sender address used for verification messages.
+- `RESEND_API_KEY`: Server-only Resend credential used as the password when `SMTP_HOST` is `smtp.resend.com`. Leave the example value empty and configure the real key only in a secret-bearing environment file or secret store.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`: SMTP transport configuration. `SMTP_PASSWORD` remains available for non-Resend providers or as an explicit credential override.
+- `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`: Optional Google OpenID Connect credentials. Configure the authorized redirect URI as `${APP_BASE_URL}/api/auth/callback/google`.
 - `APP_PORT`: Host port published by Docker Compose for the Next.js app.
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`: PostgreSQL container settings.
 - `SEED_ADMIN_PASSWORD`: Optional password for the seeded admin account. Defaults to `SEED_USER_PASSWORD`.
 - `SEED_USER_PASSWORD`: Optional password for seeded non-admin users. Defaults to `password123`.
+- `ORGANIZATION_CREATION_ENABLED`: Set to `true` to enable organization creation for every verified account.
+- `ORGANIZATION_CREATOR_EMAILS`: Comma-separated verified-email allowlist used while global organization creation is disabled.
 
 ## Project Structure
 
@@ -473,6 +483,9 @@ tests/               Vitest unit tests
 
 ## Assumptions
 
-- Session tokens are signed with `SESSION_SECRET` and stored in HTTP-only cookies. Do not commit real secrets.
+- Sessions are server-side database records referenced by secure HTTP-only cookies. Deploying the identity migration invalidates the former stateless session cookie, so users sign in again once after rollout.
+- Existing password hashes are migrated into credential-provider accounts. Existing users start unverified and must verify their current email before organization access is restored.
+- Google identities are never linked by matching email alone. Existing users must sign in first and explicitly link Google from their account page.
+- Email verification tokens are random, stored only as SHA-256 hashes, expire after 30 minutes, and are single use. Do not commit real secrets.
 - Match registration requires an accepted challenge and is limited to admins or match participants.
 - A second decline for the same challenger/challenged pair records a 3-0 forfeit win for the challenger.

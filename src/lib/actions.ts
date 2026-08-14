@@ -1,10 +1,11 @@
 "use server";
 
-import { ChallengeStatus, Prisma } from "@prisma/client";
+import { ChallengeStatus, MembershipJoinMethod, MembershipRole, MembershipStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireActiveUser, requireAdminUser } from "@/lib/authz";
+import { requireOrganizationAdmin, requireOrganizationUser } from "@/lib/authz";
+import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
   canChallengePlayer,
@@ -17,6 +18,7 @@ import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
+import { organizationPath } from "@/lib/organization-paths";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -30,6 +32,7 @@ const teamSchema = z.object({
 });
 
 const idSchema = z.string().min(1);
+const organizationSlugSchema = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const matchSchema = z.object({
   seasonId: idSchema,
@@ -53,31 +56,43 @@ function maybeValue(formData: FormData, key: string) {
   return raw && raw.length > 0 ? raw : undefined;
 }
 
-function refreshApp() {
-  revalidatePath("/ladder");
-  revalidatePath("/players");
-  revalidatePath("/teams");
-  revalidatePath("/matches");
-  revalidatePath("/challenges");
-  revalidatePath("/account");
+function refreshApp(organizationSlug: string) {
+  revalidatePath(organizationPath(organizationSlug, "ladder"));
+  revalidatePath(organizationPath(organizationSlug, "players"));
+  revalidatePath(organizationPath(organizationSlug, "teams"));
+  revalidatePath(organizationPath(organizationSlug, "matches"));
+  revalidatePath(organizationPath(organizationSlug, "challenges"));
+  revalidatePath(organizationPath(organizationSlug, "account"));
 }
 
-async function getIsAdmin(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isAdmin: true }
+async function getIsAdmin(userId: string, organizationId: string) {
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+    select: { role: true, status: true }
   });
 
-  return Boolean(user?.isAdmin);
+  return Boolean(
+    membership?.status === MembershipStatus.ACTIVE &&
+      (membership.role === MembershipRole.ADMIN || membership.role === MembershipRole.OWNER)
+  );
 }
 
-async function requireAdmin() {
-  const { session } = await requireAdminUser();
-  return session;
+function organizationSlug(formData: FormData) {
+  return organizationSlugSchema.parse(value(formData, "organizationSlug"));
+}
+
+async function requireActionUser(formData: FormData, section: string) {
+  const slug = organizationSlug(formData);
+  return requireOrganizationUser(slug, organizationPath(slug, section));
+}
+
+async function requireAdmin(formData: FormData) {
+  const slug = organizationSlug(formData);
+  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
 }
 
 export async function createPlayer(formData: FormData) {
-  await requireAdmin();
+  const { organization, session } = await requireAdmin(formData);
 
   const parsed = playerSchema.parse({
     username: value(formData, "username"),
@@ -88,52 +103,80 @@ export async function createPlayer(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(parsed.password, 12);
 
-  await prisma.user.create({
-    data: {
-      username: parsed.username,
-      fullName: parsed.fullName,
-      email: parsed.email,
-      passwordHash,
-      isApproved: true
-    }
+  const user = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        username: parsed.username,
+        fullName: parsed.fullName,
+        email: parsed.email.toLowerCase(),
+        isApproved: true
+      }
+    });
+
+    await tx.account.create({
+      data: {
+        id: `credential_${user.id}`,
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: passwordHash
+      }
+    });
+
+    await tx.membership.create({
+      data: {
+        userId: user.id,
+        organizationId: organization.id,
+        role: MembershipRole.PLAYER,
+        status: MembershipStatus.ACTIVE,
+        joinMethod: MembershipJoinMethod.ADMIN_CREATED,
+        activatedAt: new Date(),
+        reviewedAt: new Date(),
+        reviewedById: session.sub
+      }
+    });
+
+    return user;
   });
 
-  refreshApp();
+  await issueEmailVerification(user.id, user.email);
+
+  refreshApp(organization.slug);
 }
 
 export async function joinSeason(formData: FormData) {
-  await requireAdmin();
+  const { organization } = await requireAdmin(formData);
 
   const userId = idSchema.parse(value(formData, "userId"));
 
   await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: { isApproved: true, isAdmin: true }
+    const membership = await tx.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: organization.id } },
+      select: { status: true }
     });
 
-    if (!user?.isApproved && !user?.isAdmin) {
+    if (membership?.status !== MembershipStatus.ACTIVE) {
       throw new Error("Approve the account before joining it to a season.");
     }
 
-    await joinActiveSeasonForUser(tx, userId);
+    await joinActiveSeasonForUser(tx, organization.id, userId);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
-export async function joinCurrentSeason() {
-  const { session } = await requireActiveUser("/ladder");
+export async function joinCurrentSeason(formData: FormData) {
+  const { session, organization } = await requireActionUser(formData, "ladder");
 
   await prisma.$transaction(async (tx) => {
-    await joinActiveSeasonForUser(tx, session.sub);
+    await joinActiveSeasonForUser(tx, organization.id, session.sub);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function createTeam(formData: FormData) {
-  const { session } = await requireActiveUser("/teams");
+  const { session, organization } = await requireActionUser(formData, "teams");
 
   const parsed = teamSchema.parse({
     name: value(formData, "name")
@@ -142,11 +185,11 @@ export async function createTeam(formData: FormData) {
   try {
     await prisma.$transaction(async (tx) => {
       const team = await tx.team.create({
-        data: { name: parsed.name }
+        data: { name: parsed.name, organizationId: organization.id }
       });
 
-      await tx.user.update({
-        where: { id: session.sub },
+      await tx.membership.update({
+        where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
         data: { teamId: team.id }
       });
     });
@@ -158,57 +201,59 @@ export async function createTeam(formData: FormData) {
     throw error;
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function joinTeam(formData: FormData) {
-  const { session } = await requireActiveUser("/teams");
+  const { session, organization } = await requireActionUser(formData, "teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
-  await prisma.user.update({
-    where: { id: session.sub },
-    data: { teamId }
+  const team = await prisma.team.findFirst({ where: { id: teamId, organizationId: organization.id }, select: { id: true } });
+  if (!team) throw new Error("That team does not exist.");
+
+  await prisma.membership.update({
+    where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
+    data: { teamId: team.id }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
-export async function leaveTeam() {
-  const { session } = await requireActiveUser("/teams");
+export async function leaveTeam(formData: FormData) {
+  const { session, organization } = await requireActionUser(formData, "teams");
 
-  await prisma.user.update({
-    where: { id: session.sub },
+  await prisma.membership.update({
+    where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
     data: { teamId: null }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function deleteTeam(formData: FormData) {
-  await requireActiveUser("/teams");
+  const { organization } = await requireActionUser(formData, "teams");
 
   const teamId = idSchema.parse(value(formData, "teamId"));
 
   await prisma.$transaction(async (tx) => {
-    const memberCount = await tx.user.count({
-      where: { teamId }
+    const memberCount = await tx.membership.count({
+      where: { teamId, organizationId: organization.id }
     });
 
     if (memberCount > 0) {
       throw new Error("Only teams without members can be deleted.");
     }
 
-    await tx.team.delete({
-      where: { id: teamId }
-    });
+    const deleted = await tx.team.deleteMany({ where: { id: teamId, organizationId: organization.id } });
+    if (deleted.count === 0) throw new Error("That team does not exist.");
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function createChallenge(formData: FormData) {
-  const { session } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
   consumeRateLimit(getClientRateLimitKey("challenge:create", session.sub), 20, 5 * 60 * 1000);
 
   const seasonId = idSchema.parse(value(formData, "seasonId"));
@@ -221,12 +266,20 @@ export async function createChallenge(formData: FormData) {
 
   try {
     await prisma.$transaction(async (tx) => {
+      const season = await tx.season.findUnique({
+        where: { id: seasonId },
+        select: { organizationId: true }
+      });
+
+      if (!season || season.organizationId !== organization.id) {
+        throw new Error("That season does not exist.");
+      }
+
       const ladder = await tx.seasonPlayer.findMany({
         where: {
           seasonId,
-          user: {
-            OR: [{ isApproved: true }, { isAdmin: true }]
-          }
+          organizationId: organization.id,
+          membership: { status: MembershipStatus.ACTIVE }
         },
         orderBy: { currentRank: "asc" }
       });
@@ -262,6 +315,7 @@ export async function createChallenge(formData: FormData) {
 
       await tx.challenge.create({
         data: {
+          organizationId: season.organizationId,
           seasonId,
           challengerId,
           challengedId,
@@ -280,17 +334,18 @@ export async function createChallenge(formData: FormData) {
     throw error;
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function acceptChallenge(formData: FormData) {
-  const { session } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
   const result = await prisma.challenge.updateMany({
     where: {
       id,
+      organizationId: organization.id,
       challengedId: session.sub,
       status: ChallengeStatus.Pending
     },
@@ -301,11 +356,11 @@ export async function acceptChallenge(formData: FormData) {
     throw new Error("Only the challenged player can accept a pending challenge.");
   }
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function declineChallenge(formData: FormData) {
-  const { session } = await requireActiveUser("/challenges");
+  const { session, organization } = await requireActionUser(formData, "challenges");
 
   const id = idSchema.parse(value(formData, "challengeId"));
 
@@ -318,7 +373,7 @@ export async function declineChallenge(formData: FormData) {
       }
     });
 
-    if (!challenge || challenge.status !== ChallengeStatus.Pending) {
+    if (!challenge || challenge.organizationId !== organization.id || challenge.status !== ChallengeStatus.Pending) {
       throw new Error("Only pending challenges can be declined.");
     }
 
@@ -366,11 +421,11 @@ export async function declineChallenge(formData: FormData) {
     }
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 export async function registerMatchResult(formData: FormData) {
-  const { session } = await requireActiveUser("/matches");
+  const { session, organization } = await requireActionUser(formData, "matches");
   consumeRateLimit(getClientRateLimitKey("match:register", session.sub), 20, 5 * 60 * 1000);
 
   const parsed = matchSchema.parse({
@@ -388,21 +443,24 @@ export async function registerMatchResult(formData: FormData) {
 
   validateBestOfFiveResult(3, parsed.loserSets);
 
-  const isAdmin = await getIsAdmin(session.sub);
+  const isAdmin = await getIsAdmin(session.sub, organization.id);
   assertCanRegisterMatch(session, isAdmin, parsed.winnerId, parsed.loserId);
 
   await prisma.$transaction(async (tx) => {
     await assertAcceptedChallengeForMatch(tx, {
+      organizationId: organization.id,
       challengeId: parsed.challengeId,
       seasonId: parsed.seasonId,
       winnerId: parsed.winnerId,
       loserId: parsed.loserId
     });
 
+    const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
+    if (!season) throw new Error("That season does not exist.");
     await registerMatchInTransaction(tx, parsed);
   });
 
-  refreshApp();
+  refreshApp(organization.slug);
 }
 
 function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {
@@ -416,6 +474,7 @@ function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winne
 async function assertAcceptedChallengeForMatch(
   tx: Prisma.TransactionClient,
   input: {
+    organizationId: string;
     challengeId: string;
     seasonId: string;
     winnerId: string;
@@ -425,6 +484,7 @@ async function assertAcceptedChallengeForMatch(
   const challenge = await tx.challenge.findUnique({
     where: { id: input.challengeId },
     select: {
+      organizationId: true,
       seasonId: true,
       challengerId: true,
       challengedId: true,
@@ -441,7 +501,7 @@ async function assertAcceptedChallengeForMatch(
   const matchesChallengePlayers =
     matchPlayerIds.size === challengePlayerIds.size && [...matchPlayerIds].every((playerId) => challengePlayerIds.has(playerId));
 
-  if (challenge.seasonId !== input.seasonId || !matchesChallengePlayers) {
+  if (challenge.organizationId !== input.organizationId || challenge.seasonId !== input.seasonId || !matchesChallengePlayers) {
     throw new Error("Match results must use the same season and players as the accepted challenge.");
   }
 }
@@ -470,6 +530,10 @@ async function registerMatchInTransaction(
     throw new Error("Both match players must be joined to the season.");
   }
 
+  if (winner.organizationId !== loser.organizationId) {
+    throw new Error("Match players must belong to the same organization.");
+  }
+
   const score = calculateMatchScore({
     winnerPointsBefore: winner.points,
     loserPointsBefore: loser.points,
@@ -479,6 +543,7 @@ async function registerMatchInTransaction(
 
   await tx.match.create({
     data: {
+      organizationId: winner.organizationId,
       seasonId: input.seasonId,
       winnerId: input.winnerId,
       loserId: input.loserId,

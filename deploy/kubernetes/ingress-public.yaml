@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pong-ladder-public
+  namespace: pingpong
+  labels:
+    app.kubernetes.io/name: pong-ladder
+    app.kubernetes.io/part-of: pong-ladder
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: pingpong-pong-ladder-canonical-host@kubernetescrd
+spec:
+  ingressClassName: traefik-public
+  tls:
+    - hosts:
+        - pongladder.com
+        - www.pongladder.com
+      secretName: pongladder-com-tls
+  rules:
+    - host: pongladder.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pong-ladder
+                port:
+                  number: 3000
+    - host: www.pongladder.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pong-ladder
+                port:
+                  number: 3000
