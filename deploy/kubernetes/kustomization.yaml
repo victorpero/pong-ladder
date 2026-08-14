@@ -6,4 +6,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - certificate.yaml
+  - certificate-public.yaml
+  - middleware-public.yaml
   - ingress.yaml
+  - ingress-public.yaml
