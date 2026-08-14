@@ -5,6 +5,41 @@ type VerificationMessage = {
   verificationUrl: string;
 };
 
+export function getEmailTransportConfig(
+  env: Readonly<Record<string, string | undefined>> = process.env
+) {
+  const host = env.SMTP_HOST?.trim();
+  const from = env.EMAIL_FROM?.trim();
+
+  if (!host || !from) {
+    throw new Error("SMTP_HOST and EMAIL_FROM must be configured for SMTP delivery.");
+  }
+
+  const port = Number(env.SMTP_PORT || 587);
+
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("SMTP_PORT must be an integer between 1 and 65535.");
+  }
+
+  const isResend = host.toLowerCase() === "smtp.resend.com";
+  const user = env.SMTP_USER?.trim() || (isResend ? "resend" : undefined);
+  const pass = env.SMTP_PASSWORD || (isResend ? env.RESEND_API_KEY : undefined);
+
+  if (isResend && !pass) {
+    throw new Error("RESEND_API_KEY or SMTP_PASSWORD must be configured for Resend SMTP delivery.");
+  }
+
+  return {
+    from,
+    transport: {
+      host,
+      port,
+      secure: env.SMTP_SECURE === "true",
+      auth: user && pass ? { user, pass } : undefined
+    }
+  };
+}
+
 function deliveryMode() {
   const configured = process.env.EMAIL_DELIVERY_MODE?.toLowerCase();
 
@@ -21,22 +56,8 @@ export async function sendVerificationEmail({ to, verificationUrl }: Verificatio
     return;
   }
 
-  const host = process.env.SMTP_HOST;
-  const from = process.env.EMAIL_FROM;
-
-  if (!host || !from) {
-    throw new Error("SMTP_HOST and EMAIL_FROM must be configured for SMTP delivery.");
-  }
-
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: process.env.SMTP_SECURE === "true",
-    auth: user && pass ? { user, pass } : undefined
-  });
+  const { from, transport } = getEmailTransportConfig();
+  const transporter = nodemailer.createTransport(transport);
 
   await transporter.sendMail({
     from,
