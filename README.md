@@ -457,7 +457,8 @@ The scoring rules live in `src/lib/scoring.ts` and are covered by `tests/scoring
 - `APP_ENABLE_HTTPS_HEADERS`: Set to `false` for plain HTTP LAN access. Set to `true` when serving the app over HTTPS.
 - `EMAIL_DELIVERY_MODE`: `console` for local development or `smtp` for real delivery. Production defaults to `smtp`.
 - `EMAIL_FROM`: Sender address used for verification messages.
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`: SMTP transport configuration. User/password may be omitted for a trusted unauthenticated relay.
+- `RESEND_API_KEY`: Server-only Resend credential used as the password when `SMTP_HOST` is `smtp.resend.com`. Leave the example value empty and configure the real key only in a secret-bearing environment file or secret store.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`: SMTP transport configuration. `SMTP_PASSWORD` remains available for non-Resend providers or as an explicit credential override.
 - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`: Optional Google OpenID Connect credentials. Configure the authorized redirect URI as `${APP_BASE_URL}/api/auth/callback/google`.
 - `APP_PORT`: Host port published by Docker Compose for the Next.js app.
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`: PostgreSQL container settings.
