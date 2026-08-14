@@ -67,44 +67,47 @@ enum MembershipJoinMethod {
 }
 
 model Organization {
-  id                    String                 @id @default(cuid())
-  slug                  String                 @unique
+  id                    String                   @id @default(cuid())
+  slug                  String                   @unique
   name                  String
   type                  OrganizationType
-  joinPolicy            OrganizationJoinPolicy @default(ADMIN_APPROVAL)
-  allowedEmailDomains   String[]               @default([])
-  accessCodeHash        String?                @unique
-  accessCodeEnabled     Boolean                @default(false)
+  joinPolicy            OrganizationJoinPolicy   @default(ADMIN_APPROVAL)
+  allowedEmailDomains   String[]                 @default([])
+  accessCodeHash        String?                  @unique
+  accessCodeEnabled     Boolean                  @default(false)
   accessCodeUpdatedAt   DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   memberships           Membership[]
   seasons               Season[]
   teams                 Team[]
   membershipAuditEvents MembershipAuditEvent[]
+  invitations           OrganizationInvitation[]
+  invitationRedemptions InvitationRedemption[]
 
   @@index([name])
 }
 
 model Membership {
-  id             String                 @id @default(cuid())
-  userId         String
-  organizationId String
-  role           MembershipRole         @default(PLAYER)
-  status         MembershipStatus       @default(PENDING)
-  displayName    String?
-  teamId         String?
-  joinMethod     MembershipJoinMethod   @default(LEGACY)
-  activatedAt    DateTime?
-  reviewedAt     DateTime?
-  reviewedById   String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team           Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  seasonPlayers  SeasonPlayer[]
-  auditEvents    MembershipAuditEvent[]
+  id                 String                   @id @default(cuid())
+  userId             String
+  organizationId     String
+  role               MembershipRole           @default(PLAYER)
+  status             MembershipStatus         @default(PENDING)
+  displayName        String?
+  teamId             String?
+  joinMethod         MembershipJoinMethod     @default(LEGACY)
+  activatedAt        DateTime?
+  reviewedAt         DateTime?
+  reviewedById       String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team               Team?                    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  seasonPlayers      SeasonPlayer[]
+  auditEvents        MembershipAuditEvent[]
+  createdInvitations OrganizationInvitation[] @relation("InvitationCreator")
 
   @@unique([userId, organizationId])
   @@unique([id, userId, organizationId])
@@ -138,6 +141,7 @@ model User {
   emailVerificationTokens        EmailVerificationToken[]
   membershipAuditEventsAsActor   MembershipAuditEvent[]   @relation("MembershipAuditActor")
   membershipAuditEventsAsSubject MembershipAuditEvent[]   @relation("MembershipAuditSubject")
+  invitationRedemptions          InvitationRedemption[]
 
   @@index([username])
   @@index([fullName])
@@ -165,6 +169,41 @@ model MembershipAuditEvent {
   @@index([membershipId])
   @@index([subjectUserId])
   @@index([actorUserId])
+}
+
+model OrganizationInvitation {
+  id                  String                 @id @default(cuid())
+  organizationId      String
+  creatorMembershipId String?
+  tokenHash           String                 @unique
+  expiresAt           DateTime
+  maxUses             Int?
+  useCount            Int                    @default(0)
+  revokedAt           DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creatorMembership   Membership?            @relation("InvitationCreator", fields: [creatorMembershipId], references: [id], onDelete: SetNull)
+  redemptions         InvitationRedemption[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, revokedAt, expiresAt])
+  @@index([creatorMembershipId])
+}
+
+model InvitationRedemption {
+  id             String                 @id @default(cuid())
+  invitationId   String
+  organizationId String
+  userId         String
+  redeemedAt     DateTime               @default(now())
+  invitation     OrganizationInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationId, userId])
+  @@index([organizationId, redeemedAt])
+  @@index([userId, redeemedAt])
 }
 
 model Session {

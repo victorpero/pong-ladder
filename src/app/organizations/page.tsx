@@ -1,5 +1,5 @@
 import { MembershipStatus } from "@prisma/client";
-import { Ban, Building2, Clock3, KeyRound, LogOut, ShieldCheck, UserCircle } from "lucide-react";
+import { Ban, Building2, CheckCircle2, Clock3, KeyRound, LogOut, ShieldCheck, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { LogoMark } from "@/components/LogoMark";
 import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
@@ -16,7 +16,11 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function OrganizationsPage() {
+export default async function OrganizationsPage({
+  searchParams
+}: {
+  searchParams: { joined?: string | string[] };
+}) {
   const { user } = await requireAuthenticatedUser(organizationsPath);
 
   if (!user.emailVerifiedAt) {
@@ -31,6 +35,8 @@ export default async function OrganizationsPage() {
     orderBy: [{ organization: { name: "asc" } }]
   });
   const activeMemberships = memberships.filter((membership) => membership.status === MembershipStatus.ACTIVE);
+  const joinedSlug = Array.isArray(searchParams.joined) ? searchParams.joined[0] : searchParams.joined;
+  const joinedMembership = activeMemberships.find((membership) => membership.organization.slug === joinedSlug);
   const pendingMemberships = memberships.filter(
     (membership) =>
       membership.status === MembershipStatus.PENDING &&
@@ -100,6 +106,18 @@ export default async function OrganizationsPage() {
             organization.
           </p>
         </section>
+
+        {joinedMembership ? (
+          <section className="mb-8 flex max-w-3xl items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-5">
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={22} />
+            <div>
+              <p className="font-black text-success">Invitation accepted</p>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                {joinedMembership.organization.name} is now one of your organizations. Open its ladder below.
+              </p>
+            </div>
+          </section>
+        ) : null}
 
         <section className="section-band mb-8 max-w-3xl">
           <div className="flex items-start gap-3">
