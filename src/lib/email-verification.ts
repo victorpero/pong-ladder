@@ -33,7 +33,11 @@ export async function issueEmailVerification(userId: string, email: string, next
   if (nextPath) {
     verificationUrl.searchParams.set("next", nextPath);
   }
-  await sendVerificationEmail({ to: normalizedEmail, verificationUrl: verificationUrl.toString() });
+  await sendVerificationEmail({
+    to: normalizedEmail,
+    verificationUrl: verificationUrl.toString(),
+    expiresInMinutes: EMAIL_VERIFICATION_TTL_MS / 60_000
+  });
 }
 
 export async function consumeEmailVerification(token: string) {
