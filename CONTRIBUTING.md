@@ -79,6 +79,16 @@ CI runs these checks and also builds the production container image. If your cha
 docker build --build-arg APP_ENABLE_HTTPS_HEADERS=true --tag pong-ladder:local .
 ```
 
+## Transactional emails
+
+Verification email content lives in `src/lib/verification-email-template.ts` and is rendered independently of the delivery transport. Preview it locally with deterministic example data:
+
+```bash
+npm run email:preview
+```
+
+The command writes the HTML and plain-text versions to a temporary directory and prints their paths. Never render or share a real recipient address or verification token.
+
 ## Database changes
 
 Create Prisma migrations with a descriptive name and commit the generated migration alongside the schema change:

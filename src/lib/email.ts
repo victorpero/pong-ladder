@@ -1,8 +1,10 @@
 import nodemailer from "nodemailer";
+import { renderVerificationEmail } from "@/lib/verification-email-template";
 
 type VerificationMessage = {
   to: string;
   verificationUrl: string;
+  expiresInMinutes: number;
 };
 
 export function getEmailTransportConfig(
@@ -50,20 +52,19 @@ function deliveryMode() {
   return process.env.NODE_ENV === "production" ? "smtp" : "console";
 }
 
-export async function sendVerificationEmail({ to, verificationUrl }: VerificationMessage) {
+export async function sendVerificationEmail({
+  to,
+  verificationUrl,
+  expiresInMinutes
+}: VerificationMessage) {
   if (deliveryMode() === "console") {
     console.info(`[email verification] ${to}: ${verificationUrl}`);
     return;
   }
 
+  const { subject, html, text } = renderVerificationEmail({ verificationUrl, expiresInMinutes });
   const { from, transport } = getEmailTransportConfig();
   const transporter = nodemailer.createTransport(transport);
 
-  await transporter.sendMail({
-    from,
-    to,
-    subject: "Verify your Pong Ladder email",
-    text: `Verify your email address by opening this link: ${verificationUrl}`,
-    html: `<p>Verify your email address to continue using Pong Ladder.</p><p><a href="${verificationUrl}">Verify email</a></p>`
-  });
+  await transporter.sendMail({ from, to, subject, text, html });
 }
