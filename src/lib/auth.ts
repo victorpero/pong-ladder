@@ -2,6 +2,7 @@ import { prismaAdapter } from "@better-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 import { prisma } from "@/lib/prisma";
 import { findAvailableUsername } from "@/lib/username";
 
@@ -68,8 +69,8 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false,
     autoSignIn: true,
-    minPasswordLength: 8,
-    maxPasswordLength: 128,
+    minPasswordLength: PASSWORD_MIN_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH,
     password: {
       hash: (password) => bcrypt.hash(password, 12),
       verify: ({ hash, password }) => bcrypt.compare(password, hash)

@@ -144,6 +144,7 @@ model User {
   emailVerifiedAt                DateTime?
   image                          String?
   passwordHash                   String?
+  passwordChangedAt              DateTime?
   isAdmin                        Boolean                  @default(false)
   isApproved                     Boolean                  @default(false)
   createdAt                      DateTime                 @default(now())
@@ -157,6 +158,7 @@ model User {
   authSessions                   Session[]
   authAccounts                   Account[]
   emailVerificationTokens        EmailVerificationToken[]
+  passwordResetTokens            PasswordResetToken[]
   membershipAuditEventsAsActor   MembershipAuditEvent[]   @relation("MembershipAuditActor")
   membershipAuditEventsAsSubject MembershipAuditEvent[]   @relation("MembershipAuditSubject")
   invitationRedemptions          InvitationRedemption[]
@@ -283,6 +285,19 @@ model Verification {
 }
 
 model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  userId     String
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
   id         String    @id @default(cuid())
   userId     String
   email      String

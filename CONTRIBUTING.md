@@ -81,13 +81,13 @@ docker build --build-arg APP_ENABLE_HTTPS_HEADERS=true --tag pong-ladder:local .
 
 ## Transactional emails
 
-Verification email content lives in `src/lib/verification-email-template.ts` and is rendered independently of the delivery transport. Preview it locally with deterministic example data:
+Email content is rendered independently of the delivery transport. The shared layout lives in `src/lib/email-template.ts`, and each message has its own module: `src/lib/verification-email-template.ts` and `src/lib/password-reset-email-template.ts`. Preview every message locally with deterministic example data:
 
 ```bash
 npm run email:preview
 ```
 
-The command writes the HTML and plain-text versions to a temporary directory and prints their paths. Never render or share a real recipient address or verification token.
+The command writes the HTML and plain-text versions to a temporary directory and prints their paths. Never render or share a real recipient address, verification token, or password reset token.
 
 ## Database changes
 

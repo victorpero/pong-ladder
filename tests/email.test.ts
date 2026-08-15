@@ -12,7 +12,12 @@ vi.mock("nodemailer", () => ({
   }
 }));
 
-const { getEmailTransportConfig, sendVerificationEmail } = await import("@/lib/email");
+const {
+  getEmailTransportConfig,
+  sendGoogleSignInNoticeEmail,
+  sendPasswordResetEmail,
+  sendVerificationEmail
+} = await import("@/lib/email");
 
 describe("email transport configuration", () => {
   it("uses the Resend API key for the existing SMTP transport", () => {
@@ -102,6 +107,68 @@ describe("verification email delivery", () => {
 
     expect(state.sent).toHaveLength(0);
     expect(info).toHaveBeenCalledOnce();
+    info.mockRestore();
+  });
+});
+
+describe("password reset email delivery", () => {
+  afterEach(() => {
+    state.sent = [];
+    vi.unstubAllEnvs();
+  });
+
+  function useSmtp() {
+    vi.stubEnv("EMAIL_DELIVERY_MODE", "smtp");
+    vi.stubEnv("SMTP_HOST", "smtp.example.com");
+    vi.stubEnv("EMAIL_FROM", "Pong Ladder <notifications@example.com>");
+    vi.stubEnv("SMTP_USER", "mailer");
+    vi.stubEnv("SMTP_PASSWORD", "example-only");
+  }
+
+  it("uses the same sender identity and transport as the verification email", async () => {
+    useSmtp();
+
+    await sendPasswordResetEmail({
+      to: "player@example.com",
+      resetUrl: "https://pongladder.example/reset-password?token=example-token",
+      expiresInMinutes: 30
+    });
+
+    expect(state.sent).toHaveLength(1);
+    const [message] = state.sent;
+    expect(message.from).toBe("Pong Ladder <notifications@example.com>");
+    expect(message.to).toBe("player@example.com");
+    expect(message.subject).toBe("Reset your Pong Ladder password");
+    expect(message.html).toContain(">Choose a new password</a>");
+    expect(message.text).toContain("https://pongladder.example/reset-password?token=example-token");
+  });
+
+  it("sends the Google Sign-In notice without a reset link", async () => {
+    useSmtp();
+
+    await sendGoogleSignInNoticeEmail({
+      to: "google@example.com",
+      loginUrl: "https://pongladder.example/login"
+    });
+
+    expect(state.sent).toHaveLength(1);
+    const [message] = state.sent;
+    expect(message.subject).toBe("Your Pong Ladder account uses Google Sign-In");
+    expect(message.html).not.toContain("reset-password");
+    expect(message.text).not.toContain("reset-password");
+  });
+
+  it("keeps the reset link out of SMTP delivery logs", async () => {
+    useSmtp();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    await sendPasswordResetEmail({
+      to: "player@example.com",
+      resetUrl: "https://pongladder.example/reset-password?token=example-token",
+      expiresInMinutes: 30
+    });
+
+    expect(info).not.toHaveBeenCalled();
     info.mockRestore();
   });
 });
