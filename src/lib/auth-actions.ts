@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { getSessionUser, verifyEmailPath } from "@/lib/authz";
 import { issueEmailVerification } from "@/lib/email-verification";
 import { organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
+import { revokePasswordResetTokens } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -188,6 +189,12 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
         revokeOtherSessions: true
       }
     });
+
+    await prisma.user.update({
+      where: { id: sessionUser.user.id },
+      data: { passwordChangedAt: new Date() }
+    });
+    await revokePasswordResetTokens(sessionUser.user.id);
 
     revalidatePath("/account");
     return { success: "Password updated." };

@@ -1,10 +1,31 @@
 import nodemailer from "nodemailer";
+import {
+  renderGoogleSignInNoticeEmail,
+  renderPasswordResetEmail
+} from "@/lib/password-reset-email-template";
 import { renderVerificationEmail } from "@/lib/verification-email-template";
 
 type VerificationMessage = {
   to: string;
   verificationUrl: string;
   expiresInMinutes: number;
+};
+
+type PasswordResetMessage = {
+  to: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+};
+
+type GoogleSignInNoticeMessage = {
+  to: string;
+  loginUrl: string;
+};
+
+type RenderedEmail = {
+  subject: string;
+  html: string;
+  text: string;
 };
 
 export function getEmailTransportConfig(
@@ -52,6 +73,13 @@ function deliveryMode() {
   return process.env.NODE_ENV === "production" ? "smtp" : "console";
 }
 
+async function deliver(to: string, { subject, html, text }: RenderedEmail) {
+  const { from, transport } = getEmailTransportConfig();
+  const transporter = nodemailer.createTransport(transport);
+
+  await transporter.sendMail({ from, to, subject, text, html });
+}
+
 export async function sendVerificationEmail({
   to,
   verificationUrl,
@@ -62,9 +90,23 @@ export async function sendVerificationEmail({
     return;
   }
 
-  const { subject, html, text } = renderVerificationEmail({ verificationUrl, expiresInMinutes });
-  const { from, transport } = getEmailTransportConfig();
-  const transporter = nodemailer.createTransport(transport);
+  await deliver(to, renderVerificationEmail({ verificationUrl, expiresInMinutes }));
+}
 
-  await transporter.sendMail({ from, to, subject, text, html });
+export async function sendPasswordResetEmail({ to, resetUrl, expiresInMinutes }: PasswordResetMessage) {
+  if (deliveryMode() === "console") {
+    console.info(`[password reset] ${to}: ${resetUrl}`);
+    return;
+  }
+
+  await deliver(to, renderPasswordResetEmail({ resetUrl, expiresInMinutes }));
+}
+
+export async function sendGoogleSignInNoticeEmail({ to, loginUrl }: GoogleSignInNoticeMessage) {
+  if (deliveryMode() === "console") {
+    console.info(`[password reset] ${to}: account signs in with Google`);
+    return;
+  }
+
+  await deliver(to, renderGoogleSignInNoticeEmail({ loginUrl }));
 }
