@@ -59,13 +59,8 @@ The project is explicitly intended to be open source, and a root MIT license is 
 
 ## Deployment ownership
 
-The Kubernetes manifests are environment-specific operational configuration: they encode particular namespaces, ingress and certificate integrations, storage, image publishing, database topology, and hostnames. They are not generalized or documented as a supported self-hosting interface, so they do not belong in the application repository long term.
+The Kubernetes manifests are environment-specific operational configuration: they encode particular namespaces, ingress and certificate integrations, storage, image publishing, database topology, and hostnames. They are not generalized or documented as a supported self-hosting interface, so they do not belong in the application repository.
 
-The selected direction is to move the production configuration to the maintainers' dedicated infrastructure source of truth and remove `deploy/kubernetes` from this repository after the replacement has reconciled successfully. A generic deployment example should be added here only if self-hosting becomes a supported product goal with a documented compatibility contract.
+Production deployment configuration has been moved to the maintainers' dedicated infrastructure source of truth and verified under GitOps reconciliation. The obsolete `deploy/kubernetes` copy has therefore been removed from this repository.
 
-The current manifests remain temporarily because no verified replacement exists. Removing or restructuring an active production path before its replacement is confirmed would create an avoidable availability and recovery risk. Until migration is complete:
-
-- the root README does not advertise the manifests as product or self-hosting documentation;
-- contributor guidance identifies them as maintainer-operated configuration;
-- `deploy/kubernetes/README.md` records their temporary ownership status; and
-- environment-specific runbooks and infrastructure identifiers are excluded from public-facing documentation.
+A generic deployment example should be added here only if self-hosting becomes a supported product goal with a documented compatibility contract. Until then, the application repository publishes the production container image while environment-specific deployment state remains separately owned.

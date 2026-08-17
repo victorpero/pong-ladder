@@ -122,6 +122,6 @@ Merges to `main` publish the production container image. Contributors do not nee
 
 ## Deployment configuration
 
-The files in `deploy/kubernetes` currently describe a maintainer-operated environment. They are not a supported, generic self-hosting interface. Unless an issue specifically covers deployment ownership, contributors should treat them as operational configuration and avoid copying their environment-specific values.
+Environment-specific production deployment configuration is maintained separately from this application repository. Pong Ladder does not currently provide a supported generic Kubernetes or self-hosting manifest set.
 
-The rationale and migration direction are recorded in [docs/readme-strategy.md](docs/readme-strategy.md#deployment-ownership).
+The ownership rationale is recorded in [docs/readme-strategy.md](docs/readme-strategy.md#deployment-ownership).
