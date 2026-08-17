@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { GoogleAuthButton } from "@/components/GoogleAuthButton";
@@ -72,6 +73,9 @@ export function AuthForms({
             <span className="label">Password</span>
             <input className="field" name="password" type="password" autoComplete="current-password" minLength={8} required />
           </label>
+          <Link className="justify-self-start text-sm font-semibold text-muted transition hover:text-ink" href="/forgot-password">
+            Forgot password?
+          </Link>
           {loginState.error ? <p className="rounded-md bg-court-50 p-3 text-sm font-semibold text-court-700">{loginState.error}</p> : null}
           <SubmitButton label="Log in" pendingLabel="Checking..." />
         </form>

@@ -11,6 +11,7 @@
     "start": "next start -H 0.0.0.0",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "email:preview": "tsx scripts/preview-emails.ts",
     "test": "vitest run --config config/vitest.config.ts",
     "test:watch": "vitest --config config/vitest.config.ts",
     "prisma:generate": "prisma generate",
