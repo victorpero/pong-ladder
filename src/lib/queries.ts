@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
+import { buildTeamStandings } from "@/lib/team-standings";
 
 export async function getActiveSeason(organizationId: string) {
   return prisma.$transaction(async (tx) => {
@@ -59,45 +60,39 @@ export async function getLadder(seasonId: string) {
 
 export async function getTeamLadder(seasonId: string) {
   const ladder = await getLadder(seasonId);
-  const teams = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      points: number;
-      wins: number;
-      losses: number;
-      matchesPlayed: number;
-      players: number;
-    }
-  >();
+  const organizationId = ladder[0]?.organizationId;
 
-  for (const entry of ladder) {
-    if (!entry.user.team) {
-      continue;
-    }
-
-    const current = teams.get(entry.user.team.id) ?? {
-      id: entry.user.team.id,
-      name: entry.user.team.name,
-      points: 0,
-      wins: 0,
-      losses: 0,
-      matchesPlayed: 0,
-      players: 0
-    };
-
-    current.points += entry.points;
-    current.wins += entry.wins;
-    current.losses += entry.losses;
-    current.matchesPlayed += entry.matchesPlayed;
-    current.players += 1;
-    teams.set(current.id, current);
+  if (!organizationId) {
+    return [];
   }
 
-  return withEffectivePositions(
-    Array.from(teams.values()).sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
-  );
+  const [matches, memberships] = await Promise.all([
+    prisma.match.findMany({
+      where: { seasonId, organizationId },
+      select: {
+        winnerId: true,
+        loserId: true,
+        winnerPointsBefore: true,
+        winnerPointsAfter: true,
+        loserPointsBefore: true,
+        loserPointsAfter: true
+      }
+    }),
+    prisma.membership.findMany({
+      where: { organizationId },
+      select: { userId: true, teamId: true }
+    })
+  ]);
+
+  return buildTeamStandings({
+    players: ladder.map((entry) => ({
+      userId: entry.userId,
+      points: entry.points,
+      team: entry.user.team
+    })),
+    matches,
+    teamIdByUserId: new Map(memberships.map((membership) => [membership.userId, membership.teamId]))
+  });
 }
 
 /**
