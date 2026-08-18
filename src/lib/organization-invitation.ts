@@ -20,7 +20,7 @@ export type InvitationInspection =
   | {
       availability: Exclude<InvitationAvailability, "invalid">;
       id: string;
-      organization: { name: string };
+      organization: { id: string; name: string; slug: string };
       expiresAt: Date;
     };
 
@@ -79,7 +79,7 @@ export async function inspectOrganizationInvitation(token: string, now = new Dat
       maxUses: true,
       useCount: true,
       revokedAt: true,
-      organization: { select: { name: true } }
+      organization: { select: { id: true, name: true, slug: true } }
     }
   });
 
@@ -93,6 +93,15 @@ export async function inspectOrganizationInvitation(token: string, now = new Dat
     organization: invitation.organization,
     expiresAt: invitation.expiresAt
   };
+}
+
+export async function hasActiveOrganizationMembership(userId: string, organizationId: string) {
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+    select: { status: true }
+  });
+
+  return membership?.status === MembershipStatus.ACTIVE;
 }
 
 export async function redeemOrganizationInvitation(
@@ -188,25 +197,27 @@ async function redeemInTransaction(
     return { outcome: "invalid" };
   }
 
+  const existing = await tx.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId: invitation.organizationId } },
+    select: { id: true, status: true, role: true }
+  });
+
+  // Settled membership wins over invitation availability: a replayed callback must
+  // finish cleanly instead of reporting the invitation this user already consumed.
+  if (existing?.status === MembershipStatus.ACTIVE) {
+    return {
+      outcome: "already_member",
+      organizationName: invitation.organization.name,
+      organizationSlug: invitation.organization.slug
+    };
+  }
+
   const availability = getInvitationAvailability(invitation, now);
 
   if (availability !== "valid") {
     return {
       outcome: availability,
       organizationName: invitation.organization.name
-    };
-  }
-
-  const existing = await tx.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId: invitation.organizationId } },
-    select: { id: true, status: true, role: true }
-  });
-
-  if (existing?.status === MembershipStatus.ACTIVE) {
-    return {
-      outcome: "already_member",
-      organizationName: invitation.organization.name,
-      organizationSlug: invitation.organization.slug
     };
   }
 

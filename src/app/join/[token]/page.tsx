@@ -2,8 +2,13 @@ import { Building2, Clock3, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { InvitationRedemption } from "@/components/InvitationRedemption";
 import { LogoMark } from "@/components/LogoMark";
+import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/authz";
-import { inspectOrganizationInvitation, isOrganizationInvitationToken } from "@/lib/organization-invitation";
+import {
+  hasActiveOrganizationMembership,
+  inspectOrganizationInvitation,
+  isOrganizationInvitationToken
+} from "@/lib/organization-invitation";
 import { organizationsPath } from "@/lib/organization-paths";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +22,15 @@ export default async function OrganizationInvitationPage({ params }: { params: {
     return <InvitationUnavailable title="Invitation unavailable" body="This invitation link is invalid." />;
   }
 
+  const sessionUser = await getSessionUser();
+
   if (invitation.availability !== "valid") {
+    // An invitation that ran out or lapsed after it was accepted is not a failure for
+    // the member it already admitted, so finish on the organization instead.
+    if (sessionUser && (await hasActiveOrganizationMembership(sessionUser.user.id, invitation.organization.id))) {
+      redirect(`${organizationsPath}?joined=${encodeURIComponent(invitation.organization.slug)}`);
+    }
+
     return (
       <InvitationUnavailable
         title={`Invitation ${invitation.availability}`}
@@ -25,8 +38,6 @@ export default async function OrganizationInvitationPage({ params }: { params: {
       />
     );
   }
-
-  const sessionUser = await getSessionUser();
 
   if (!sessionUser) {
     return (
