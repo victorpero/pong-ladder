@@ -10,8 +10,9 @@ type ChallengeRow = {
 
 const state = vi.hoisted(() => ({
   challenges: [] as ChallengeRow[],
-  sendError: null as Error | null,
-  sent: [] as Record<string, string>[]
+  sendError: null as (Error & { code?: string; responseCode?: number }) | null,
+  sent: [] as Record<string, string>[],
+  order: [] as string[]
 }));
 
 vi.mock("@/lib/prisma", () => {
@@ -34,6 +35,7 @@ vi.mock("@/lib/prisma", () => {
             return { count: 0 };
           }
 
+          state.order.push("claim");
           challenge.notifiedAt = data.notifiedAt;
 
           return { count: 1 };
@@ -49,11 +51,14 @@ vi.mock("@/lib/email", () => ({
       throw state.sendError;
     }
 
+    state.order.push("send");
     state.sent.push(message);
   }
 }));
 
-const { notifyChallengedPlayer } = await import("@/lib/challenge-notifications");
+const { challengeNotificationIdempotencyKey, notifyChallengedPlayer } = await import(
+  "@/lib/challenge-notifications"
+);
 
 function challenge(overrides: Partial<ChallengeRow> = {}): ChallengeRow {
   return {
@@ -70,6 +75,7 @@ beforeEach(() => {
   state.challenges = [challenge()];
   state.sendError = null;
   state.sent = [];
+  state.order = [];
   vi.stubEnv("APP_BASE_URL", "https://pongladder.example");
 });
 
@@ -87,7 +93,8 @@ describe("challenge notifications", () => {
         to: "rival@example.com",
         challengerName: "Alex Example",
         organizationName: "Example Club",
-        challengeUrl: "https://pongladder.example/org/example-club/challenges"
+        challengeUrl: "https://pongladder.example/org/example-club/challenges",
+        idempotencyKey: "challenge-notification/challenge-1"
       }
     ]);
   });
@@ -110,6 +117,42 @@ describe("challenge notifications", () => {
     expect(state.sent).toHaveLength(1);
   });
 
+  it("presents a stable idempotency key so a duplicate send is deduplicated by Resend", async () => {
+    expect(challengeNotificationIdempotencyKey("challenge-1")).toBe(
+      "challenge-notification/challenge-1"
+    );
+    expect(challengeNotificationIdempotencyKey("challenge-1").length).toBeLessThanOrEqual(256);
+
+    await notifyChallengedPlayer("challenge-1");
+
+    expect(state.sent[0].idempotencyKey).toBe("challenge-notification/challenge-1");
+  });
+
+  it("records the notification only after the provider accepted the message", async () => {
+    await notifyChallengedPlayer("challenge-1");
+
+    expect(state.order).toEqual(["send", "claim"]);
+    expect(state.challenges[0].notifiedAt).toBeInstanceOf(Date);
+  });
+
+  it("leaves a failed challenge retryable instead of marking it notified", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    state.sendError = new Error("SMTP timeout");
+
+    await notifyChallengedPlayer("challenge-1");
+
+    expect(state.challenges[0].notifiedAt).toBeNull();
+
+    // The retry succeeds; Resend's idempotency key covers the case where the first attempt
+    // was accepted but its acknowledgement was lost.
+    state.sendError = null;
+    await notifyChallengedPlayer("challenge-1");
+
+    expect(state.sent).toHaveLength(1);
+    expect(state.sent[0].idempotencyKey).toBe("challenge-notification/challenge-1");
+    expect(state.challenges[0].notifiedAt).toBeInstanceOf(Date);
+  });
+
   it("skips a challenge that was already announced", async () => {
     state.challenges = [challenge({ notifiedAt: new Date("2026-08-18T10:00:00Z") })];
 
@@ -126,16 +169,36 @@ describe("challenge notifications", () => {
     expect(state.sent).toHaveLength(0);
   });
 
-  it("swallows a provider failure and reports it without the recipient address", async () => {
+  it("swallows a provider failure and logs a classification, not the SMTP response", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    state.sendError = new Error("Resend rejected the message");
+    // Nodemailer surfaces the server's response verbatim, and that text can echo the
+    // envelope recipient.
+    const failure = Object.assign(
+      new Error("550 5.1.1 <rival@example.com> recipient rejected"),
+      { name: "Error", code: "EENVELOPE", responseCode: 550 }
+    );
+    state.sendError = failure;
 
     await expect(notifyChallengedPlayer("challenge-1")).resolves.toBeUndefined();
 
     expect(logged).toHaveBeenCalledOnce();
     const [message] = logged.mock.calls[0];
     expect(message).toContain("challenge-1");
-    expect(message).toContain("Resend rejected the message");
+    expect(message).toContain("code=EENVELOPE");
+    expect(message).toContain("responseCode=550");
     expect(message).not.toContain("rival@example.com");
+    expect(message).not.toContain("recipient rejected");
+  });
+
+  it("still classifies a failure that carries no SMTP response data", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    state.sendError = new Error("EMAIL_FROM must be configured");
+
+    await notifyChallengedPlayer("challenge-1");
+
+    const [message] = logged.mock.calls[0];
+    expect(message).toContain("challenge-1");
+    expect(message).toContain("type=Error");
+    expect(message).not.toContain("EMAIL_FROM must be configured");
   });
 });

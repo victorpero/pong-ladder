@@ -28,6 +28,7 @@ type ChallengeNotificationMessage = {
   challengerName: string;
   organizationName: string;
   challengeUrl: string;
+  idempotencyKey: string;
 };
 
 type RenderedEmail = {
@@ -81,11 +82,15 @@ function deliveryMode() {
   return process.env.NODE_ENV === "production" ? "smtp" : "console";
 }
 
-async function deliver(to: string, { subject, html, text }: RenderedEmail) {
+async function deliver(
+  to: string,
+  { subject, html, text }: RenderedEmail,
+  headers?: Record<string, string>
+) {
   const { from, transport } = getEmailTransportConfig();
   const transporter = nodemailer.createTransport(transport);
 
-  await transporter.sendMail({ from, to, subject, text, html });
+  await transporter.sendMail({ from, to, subject, text, html, headers });
 }
 
 export async function sendVerificationEmail({
@@ -123,12 +128,19 @@ export async function sendChallengeNotificationEmail({
   to,
   challengerName,
   organizationName,
-  challengeUrl
+  challengeUrl,
+  idempotencyKey
 }: ChallengeNotificationMessage) {
   if (deliveryMode() === "console") {
     console.info(`[challenge notification] ${to}: ${challengeUrl}`);
     return;
   }
 
-  await deliver(to, renderChallengeNotificationEmail({ challengerName, organizationName, challengeUrl }));
+  // Resend honours this header on the SMTP relay and keeps the key for 24 hours, so a
+  // retry after an ambiguous failure is accepted without delivering a second copy.
+  await deliver(
+    to,
+    renderChallengeNotificationEmail({ challengerName, organizationName, challengeUrl }),
+    { "Resend-Idempotency-Key": idempotencyKey }
+  );
 }

@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ sent: [] as Record<string, string>[] }));
+type SentMessage = Record<string, string> & { headers?: Record<string, string> };
+
+const state = vi.hoisted(() => ({ sent: [] as SentMessage[] }));
 
 vi.mock("nodemailer", () => ({
   default: {
     createTransport: () => ({
-      sendMail: async (message: Record<string, string>) => {
+      sendMail: async (message: SentMessage) => {
         state.sent.push(message);
       }
     })
@@ -184,7 +186,8 @@ describe("challenge notification email delivery", () => {
     to: "rival@example.com",
     challengerName: "Alex Example",
     organizationName: "Example Club",
-    challengeUrl: "https://pongladder.example/org/example-club/challenges"
+    challengeUrl: "https://pongladder.example/org/example-club/challenges",
+    idempotencyKey: "challenge-notification/challenge-1"
   };
 
   it("reuses the shared sender identity and transport", async () => {
@@ -203,6 +206,35 @@ describe("challenge notification email delivery", () => {
     expect(sent.subject).toBe("You have a new Pong Ladder challenge");
     expect(sent.html).toContain(">View challenge</a>");
     expect(sent.text).toContain("https://pongladder.example/org/example-club/challenges");
+  });
+
+  it("passes the idempotency key to Resend as an SMTP header", async () => {
+    vi.stubEnv("EMAIL_DELIVERY_MODE", "smtp");
+    vi.stubEnv("SMTP_HOST", "smtp.resend.com");
+    vi.stubEnv("EMAIL_FROM", "Pong Ladder <notifications@example.com>");
+    vi.stubEnv("RESEND_API_KEY", "example-only");
+
+    await sendChallengeNotificationEmail(message);
+
+    expect(state.sent[0].headers).toEqual({
+      "Resend-Idempotency-Key": "challenge-notification/challenge-1"
+    });
+  });
+
+  it("leaves the other transactional emails without idempotency headers", async () => {
+    vi.stubEnv("EMAIL_DELIVERY_MODE", "smtp");
+    vi.stubEnv("SMTP_HOST", "smtp.example.com");
+    vi.stubEnv("EMAIL_FROM", "Pong Ladder <notifications@example.com>");
+    vi.stubEnv("SMTP_USER", "mailer");
+    vi.stubEnv("SMTP_PASSWORD", "example-only");
+
+    await sendVerificationEmail({
+      to: "player@example.com",
+      verificationUrl: "https://pongladder.example/verify-email/confirm?token=example-token",
+      expiresInMinutes: 30
+    });
+
+    expect(state.sent[0].headers).toBeUndefined();
   });
 
   it("keeps console delivery for local development", async () => {

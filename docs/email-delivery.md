@@ -9,14 +9,15 @@ the same transport and the same `EMAIL_FROM` sender identity.
 
 ## Resend free tier
 
-Checked against Resend's official documentation on 2026-08-18. Re-check before relying on
+Checked against Resend's official documentation on 2026-08-18 (the pricing page, the usage
+limits reference, and the account quotas knowledge-base article). Re-check before relying on
 these numbers; Resend changes plan terms without notice.
 
 | Limit | Free plan |
 | --- | --- |
 | Monthly volume | 3,000 emails (sent and received both count) |
 | Daily volume | 100 emails per day |
-| API rate limit | 10 requests/second per team, shared across API keys |
+| Request rate limit | 10 requests/second per team, shared across API keys |
 | Verified custom domains | 1 |
 | Data retention | 30 days |
 | Pay-as-you-go overage | Not available on the free plan |
@@ -28,19 +29,29 @@ Other findings that matter for this application:
 - **The shared `resend.dev` domain is test-only.** Messages sent from `onboarding@resend.dev`
   can only reach the address that owns the Resend account; anything else returns `403`. A
   verified custom domain is therefore mandatory for real challenge notifications.
-- **Exceeding the quota pauses sending, it does not bill.** Overage is only purchasable on
-  paid plans, so a free-plan account that runs out simply stops sending until the next billing
-  cycle. Resend emails quota warnings at 80% and 100%.
+- **Exceeding a quota pauses sending, it does not bill.** Overage is only purchasable on paid
+  plans, so a free-plan account that runs out simply stops sending. The two quotas recover
+  differently: the **daily** quota clears once 24 hours have passed, while the **monthly**
+  quota only clears when the monthly allowance resets or the plan is upgraded. Resend emails
+  quota warnings at 80% and 100%.
 - **Rate limiting surfaces as HTTP 429** with `ratelimit-limit`, `ratelimit-remaining`,
-  `ratelimit-reset`, and `retry-after` headers.
+  `ratelimit-reset`, and `retry-after` headers. Resend documents the request rate limit for its
+  API and does not publish a separate SMTP figure, so treat it as the ceiling for the SMTP
+  relay too rather than assuming SMTP is exempt.
 - **Reputation thresholds apply to every plan**: sending pauses if the bounce rate exceeds 4%
   or the spam rate exceeds 0.08%.
 
 ### Is the free tier enough for challenge notifications?
 
-Yes, for the current scale. Challenge notifications are sent one at a time from a user-initiated
-server action, so the 10 requests/second API limit is not reachable — challenge creation is
-additionally rate limited to 20 challenges per user per 5 minutes in `createChallenge`.
+Yes, for the current scale, with the rate limit worth watching rather than dismissing.
+
+The request rate limit is **team-wide**, not per user: concurrent challenge creations share it
+with verification and password-reset mail, so it is not structurally unreachable. It is
+unlikely to bind in practice — each challenge sends a single message from a user-initiated
+server action, and `createChallenge` is separately rate limited to 20 challenges per user per
+5 minutes — but a burst of simultaneous activity draws on one shared budget. A 429 from the
+relay surfaces as a delivery failure, which is logged and leaves the challenge retryable rather
+than lost.
 
 The binding constraint is volume. Every challenge produces exactly one email, and verification
 and password-reset messages share the same quota. The free plan's 100 emails/day and
@@ -55,7 +66,8 @@ creating a handful of challenges each per week.
   sending quota warnings.
 
 A second verified sending domain, or retention of delivery logs beyond 30 days for support
-purposes, would also force the upgrade.
+purposes, would also force the upgrade. Sustained 429s from the relay are a third signal: the
+paid plans are where Resend raises the request rate limit on request.
 
 ## Challenge notifications
 
@@ -66,10 +78,18 @@ message body and the `View challenge` link always stay inside that challenge's o
 - The challenger is never emailed; only `challenge.challenged` is.
 - A rejected challenge (self-challenge, ladder window, duplicate, unique-index race) never
   reaches the notification step, so no email is sent.
-- `Challenge.notifiedAt` is claimed with a conditional `updateMany` before delivery, which keeps
-  a retried or concurrent run from sending a second copy of the same notification.
-- Delivery failures are caught and logged with the challenge id and the error message only —
-  never the recipient address or any credential — and never undo the persisted challenge.
+- Duplicate delivery is prevented by two mechanisms. Each message carries a
+  `Resend-Idempotency-Key` of `challenge-notification/<challengeId>`, which Resend honours on
+  the SMTP relay and remembers for 24 hours, so a retry of an ambiguous failure is accepted
+  without a second copy reaching the player. `Challenge.notifiedAt` is then recorded **after**
+  the provider accepts the message, and short-circuits any later attempt.
+- Because the timestamp is written after delivery rather than before it, a provider outage
+  leaves the challenge un-notified and genuinely retryable instead of permanently marked as
+  sent.
+- Delivery failures are caught and logged with the challenge id and a classification only —
+  the error type plus Nodemailer's `code` and `responseCode`. The provider's own message text
+  is never logged, because an SMTP rejection quotes the server response and that can echo the
+  envelope recipient.
 
 Run `npm run email:preview` to render every transactional template, including this one, to a
 temporary directory with placeholder data.
