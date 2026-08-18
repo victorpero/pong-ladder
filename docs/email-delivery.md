@@ -9,15 +9,18 @@ the same transport and the same `EMAIL_FROM` sender identity.
 
 ## Resend free tier
 
-Checked against Resend's official documentation on 2026-08-18 (the pricing page, the usage
-limits reference, and the account quotas knowledge-base article). Re-check before relying on
-these numbers; Resend changes plan terms without notice.
+Checked against Resend's official documentation on 2026-08-18: [pricing](https://resend.com/pricing),
+[usage limits](https://resend.com/docs/api-reference/rate-limit),
+[account quotas and limits](https://resend.com/docs/knowledge-base/account-quotas-and-limits),
+[send with SMTP](https://resend.com/docs/send-with-smtp), and
+[idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys). Re-check against
+those pages before relying on these numbers; Resend changes plan terms without notice.
 
 | Limit | Free plan |
 | --- | --- |
 | Monthly volume | 3,000 emails (sent and received both count) |
 | Daily volume | 100 emails per day |
-| Request rate limit | 10 requests/second per team, shared across API keys |
+| Request rate limit | 10 requests/second per team, shared across API keys and the SMTP relay |
 | Verified custom domains | 1 |
 | Data retention | 30 days |
 | Pay-as-you-go overage | Not available on the free plan |
@@ -35,9 +38,9 @@ Other findings that matter for this application:
   quota only clears when the monthly allowance resets or the plan is upgraded. Resend emails
   quota warnings at 80% and 100%.
 - **Rate limiting surfaces as HTTP 429** with `ratelimit-limit`, `ratelimit-remaining`,
-  `ratelimit-reset`, and `retry-after` headers. Resend documents the request rate limit for its
-  API and does not publish a separate SMTP figure, so treat it as the ceiling for the SMTP
-  relay too rather than assuming SMTP is exempt.
+  `ratelimit-reset`, and `retry-after` headers. The SMTP relay is covered by the same limit as
+  the API — Resend's SMTP documentation states this directly — so the figure above is the
+  ceiling for Pong Ladder's transport, not just for REST callers.
 - **Reputation thresholds apply to every plan**: sending pauses if the bounce rate exceeds 4%
   or the spam rate exceeds 0.08%.
 
@@ -45,11 +48,12 @@ Other findings that matter for this application:
 
 Yes, for the current scale, with the rate limit worth watching rather than dismissing.
 
-The request rate limit is **team-wide**, not per user: concurrent challenge creations share it
-with verification and password-reset mail, so it is not structurally unreachable. It is
-unlikely to bind in practice — each challenge sends a single message from a user-initiated
-server action, and `createChallenge` is separately rate limited to 20 challenges per user per
-5 minutes — but a burst of simultaneous activity draws on one shared budget. A 429 from the
+The request rate limit is **team-wide** and covers the SMTP relay, not just the API: concurrent
+challenge creations share it with verification and password-reset mail, so it is not
+structurally unreachable. It is unlikely to bind in practice — each challenge sends a single
+message from a user-initiated server action, and `createChallenge` is separately rate limited
+to 20 challenges per user per 5 minutes — but a burst of simultaneous activity draws on one
+shared budget. A 429 from the
 relay surfaces as a delivery failure, which is logged and leaves the challenge retryable rather
 than lost.
 
@@ -66,8 +70,9 @@ creating a handful of challenges each per week.
   sending quota warnings.
 
 A second verified sending domain, or retention of delivery logs beyond 30 days for support
-purposes, would also force the upgrade. Sustained 429s from the relay are a third signal: the
-paid plans are where Resend raises the request rate limit on request.
+purposes, would also force the upgrade. Sustained 429s from the relay are a separate signal,
+though not necessarily one that requires a paid plan: Resend raises the default limit for
+trusted senders on request through support.
 
 ## Challenge notifications
 
