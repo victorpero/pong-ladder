@@ -10,7 +10,8 @@ const state = vi.hoisted(() => ({
     string,
     unknown
   >,
-  requestCookie: undefined as string | undefined
+  requestCookie: undefined as string | undefined,
+  writtenCookies: [] as Array<{ name: string; value: string }>
 }));
 
 vi.mock("@/lib/authz", () => ({
@@ -28,17 +29,22 @@ vi.mock("@/lib/organization-invitation", async (importOriginal) => {
   };
 });
 
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
 vi.mock("next/headers", () => ({
   cookies: () => ({
     get: (name: string) =>
       name === PENDING_INVITATION_COOKIE && state.requestCookie !== undefined
         ? { name, value: state.requestCookie }
-        : undefined
+        : undefined,
+    set: (name: string, value: string) => {
+      state.writtenCookies.push({ name, value });
+    }
   })
 }));
 
 const { GET: continueInvitation } = await import("@/app/join/[token]/continue/route");
-const { GET: resumeInvitation } = await import("@/app/join/resume/route");
+const { resumePendingInvitationAction } = await import("@/lib/organization-invitation-actions");
 
 const token = "b".repeat(43);
 const joinPath = `/join/${token}`;
@@ -54,6 +60,7 @@ describe("invitation handoff routes", () => {
     state.inspection = { availability: "valid", id: "invitation-1" };
     state.redemption = { outcome: "redeemed", organizationName: "Polisen", organizationSlug: "polisen" };
     state.requestCookie = undefined;
+    state.writtenCookies = [];
   });
 
   afterEach(() => {
@@ -113,10 +120,12 @@ describe("invitation handoff routes", () => {
       state.sessionUser = { user: { id: "user-1", email: "player@example.com", emailVerifiedAt: new Date() } };
       state.requestCookie = pendingCookie("invitation-1");
 
-      const response = await resumeInvitation();
-
-      expect(response.headers.get("location")).toBe("https://pongladder.com/organizations?joined=polisen");
-      expect(response.cookies.get(PENDING_INVITATION_COOKIE)?.value).toBe("");
+      expect(await resumePendingInvitationAction()).toEqual({
+        outcome: "redeemed",
+        organizationName: "Polisen",
+        organizationSlug: "polisen"
+      });
+      expect(clearedHandoff()).toBe(true);
     });
 
     it("finishes cleanly when the account already belongs to the organization", async () => {
@@ -124,10 +133,8 @@ describe("invitation handoff routes", () => {
       state.requestCookie = pendingCookie("invitation-1");
       state.redemption = { outcome: "already_member", organizationName: "Polisen", organizationSlug: "polisen" };
 
-      const response = await resumeInvitation();
-
-      expect(response.headers.get("location")).toBe("https://pongladder.com/organizations?joined=polisen");
-      expect(response.cookies.get(PENDING_INVITATION_COOKIE)?.value).toBe("");
+      expect(await resumePendingInvitationAction()).toMatchObject({ outcome: "already_member" });
+      expect(clearedHandoff()).toBe(true);
     });
 
     it("reports an invitation that lapsed while the account was being created", async () => {
@@ -135,41 +142,37 @@ describe("invitation handoff routes", () => {
       state.requestCookie = pendingCookie("invitation-1");
       state.redemption = { outcome: "expired", organizationName: "Polisen" };
 
-      const response = await resumeInvitation();
-
-      expect(response.headers.get("location")).toBe("https://pongladder.com/organizations?invitation=expired");
-      expect(response.cookies.get(PENDING_INVITATION_COOKIE)?.value).toBe("");
+      expect(await resumePendingInvitationAction()).toMatchObject({ outcome: "expired" });
+      expect(clearedHandoff()).toBe(true);
     });
 
     it("keeps the handoff while authentication is still incomplete", async () => {
       state.requestCookie = pendingCookie("invitation-1");
 
-      const anonymous = await resumeInvitation();
-
-      expect(anonymous.headers.get("location")).toBe("https://pongladder.com/login?next=%2Forganizations");
-      expect(anonymous.cookies.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
+      expect(await resumePendingInvitationAction()).toEqual({ outcome: "authentication_required" });
 
       state.sessionUser = { user: { id: "user-1", email: "player@example.com", emailVerifiedAt: null } };
-      const unverified = await resumeInvitation();
 
-      expect(unverified.headers.get("location")).toBe("https://pongladder.com/verify-email?next=%2Forganizations");
-      expect(unverified.cookies.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
+      expect(await resumePendingInvitationAction()).toEqual({ outcome: "verification_required" });
+      expect(state.writtenCookies).toHaveLength(0);
     });
 
-    it("falls back to organization selection when nothing is pending", async () => {
+    it("reports nothing pending when the handoff is missing or forged", async () => {
       state.sessionUser = { user: { id: "user-1", email: "player@example.com", emailVerifiedAt: new Date() } };
       state.requestCookie = "v1.forged.9999999999999.signature";
 
-      const response = await resumeInvitation();
-
-      expect(response.headers.get("location")).toBe("https://pongladder.com/organizations");
-      expect(response.cookies.get(PENDING_INVITATION_COOKIE)?.value).toBe("");
+      expect(await resumePendingInvitationAction()).toEqual({ outcome: "none" });
+      expect(clearedHandoff()).toBe(true);
     });
   });
 });
 
 function request(path: string) {
   return new Request(`http://0.0.0.0:3000${path}`);
+}
+
+function clearedHandoff() {
+  return state.writtenCookies.some((cookie) => cookie.name === PENDING_INVITATION_COOKIE && cookie.value === "");
 }
 
 function pendingCookie(invitationId: string) {

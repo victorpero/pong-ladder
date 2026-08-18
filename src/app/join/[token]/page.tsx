@@ -34,9 +34,9 @@ export default async function OrganizationInvitationPage({ params }: { params: {
         <p className="mt-5 text-sm leading-6 text-muted">
           Log in or create an account to accept this invitation. The link remains active through authentication.
         </p>
-        <Link className="button mt-6 inline-flex" href={continuePath}>
+        <a className="button mt-6 inline-flex" href={continuePath}>
           Continue to login
-        </Link>
+        </a>
       </InvitationShell>
     );
   }
@@ -47,9 +47,9 @@ export default async function OrganizationInvitationPage({ params }: { params: {
         <p className="mt-5 text-sm leading-6 text-muted">
           Verify {sessionUser.user.email} before accepting this invitation.
         </p>
-        <Link className="button mt-6 inline-flex" href={continuePath}>
+        <a className="button mt-6 inline-flex" href={continuePath}>
           Verify email
-        </Link>
+        </a>
       </InvitationShell>
     );
   }

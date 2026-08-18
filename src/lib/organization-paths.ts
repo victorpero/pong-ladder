@@ -1,5 +1,4 @@
 export const organizationsPath = "/organizations";
-export const pendingInvitationPath = "/join/resume";
 
 const organizationRoutePattern = /^\/org\/([^/]+)(?:\/|$)/;
 const invitationRoutePattern = /^\/join\/[^?#]+(?:[?#].*)?$/;

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { LogoMark } from "@/components/LogoMark";
 import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
+import { PendingInvitationResumption } from "@/components/PendingInvitationResumption";
 import { logout } from "@/lib/auth-actions";
 import { requireAuthenticatedUser, verifyEmailPath } from "@/lib/authz";
 import {
@@ -11,7 +12,7 @@ import {
   canDisplayUnavailableOrganization,
   discoverableOrganizationJoinPolicies
 } from "@/lib/organization-discovery";
-import { organizationPath, organizationsPath, pendingInvitationPath } from "@/lib/organization-paths";
+import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { canCreateOrganizations } from "@/lib/organization-creation-policy";
 import { PENDING_INVITATION_COOKIE, readPendingInvitation } from "@/lib/pending-invitation";
 import { prisma } from "@/lib/prisma";
@@ -31,7 +32,7 @@ export default async function OrganizationsPage({
   }
 
   if (readPendingInvitation(cookies().get(PENDING_INVITATION_COOKIE)?.value)) {
-    redirect(pendingInvitationPath);
+    return <PendingInvitationResumption />;
   }
 
   const memberships = await prisma.membership.findMany({
