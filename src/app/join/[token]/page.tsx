@@ -2,22 +2,35 @@ import { Building2, Clock3, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { InvitationRedemption } from "@/components/InvitationRedemption";
 import { LogoMark } from "@/components/LogoMark";
-import { getSessionUser, verifyEmailPath } from "@/lib/authz";
-import { inspectOrganizationInvitation, isOrganizationInvitationToken } from "@/lib/organization-invitation";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/authz";
+import {
+  hasActiveOrganizationMembership,
+  inspectOrganizationInvitation,
+  isOrganizationInvitationToken
+} from "@/lib/organization-invitation";
 import { organizationsPath } from "@/lib/organization-paths";
 
 export const dynamic = "force-dynamic";
 
 export default async function OrganizationInvitationPage({ params }: { params: { token: string } }) {
   const token = params.token;
-  const joinPath = isOrganizationInvitationToken(token) ? `/join/${token}` : "/join/invalid";
+  const continuePath = isOrganizationInvitationToken(token) ? `/join/${token}/continue` : "/join/invalid";
   const invitation = await inspectOrganizationInvitation(token);
 
   if (invitation.availability === "invalid") {
     return <InvitationUnavailable title="Invitation unavailable" body="This invitation link is invalid." />;
   }
 
+  const sessionUser = await getSessionUser();
+
   if (invitation.availability !== "valid") {
+    // An invitation that ran out or lapsed after it was accepted is not a failure for
+    // the member it already admitted, so finish on the organization instead.
+    if (sessionUser && (await hasActiveOrganizationMembership(sessionUser.user.id, invitation.organization.id))) {
+      redirect(`${organizationsPath}?joined=${encodeURIComponent(invitation.organization.slug)}`);
+    }
+
     return (
       <InvitationUnavailable
         title={`Invitation ${invitation.availability}`}
@@ -26,17 +39,15 @@ export default async function OrganizationInvitationPage({ params }: { params: {
     );
   }
 
-  const sessionUser = await getSessionUser();
-
   if (!sessionUser) {
     return (
       <InvitationShell organizationName={invitation.organization.name} expiresAt={invitation.expiresAt}>
         <p className="mt-5 text-sm leading-6 text-muted">
           Log in or create an account to accept this invitation. The link remains active through authentication.
         </p>
-        <Link className="button mt-6 inline-flex" href={`/login?next=${encodeURIComponent(joinPath)}`}>
+        <a className="button mt-6 inline-flex" href={continuePath}>
           Continue to login
-        </Link>
+        </a>
       </InvitationShell>
     );
   }
@@ -47,12 +58,9 @@ export default async function OrganizationInvitationPage({ params }: { params: {
         <p className="mt-5 text-sm leading-6 text-muted">
           Verify {sessionUser.user.email} before accepting this invitation.
         </p>
-        <Link
-          className="button mt-6 inline-flex"
-          href={`${verifyEmailPath}?next=${encodeURIComponent(joinPath)}`}
-        >
+        <a className="button mt-6 inline-flex" href={continuePath}>
           Verify email
-        </Link>
+        </a>
       </InvitationShell>
     );
   }

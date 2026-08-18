@@ -1,8 +1,10 @@
 import { MembershipStatus, OrganizationVisibility } from "@prisma/client";
-import { Ban, Building2, CheckCircle2, Clock3, KeyRound, LogOut, Plus, ShieldCheck, UserCircle } from "lucide-react";
+import { AlertTriangle, Ban, Building2, CheckCircle2, Clock3, KeyRound, LogOut, Plus, ShieldCheck, UserCircle } from "lucide-react";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { LogoMark } from "@/components/LogoMark";
 import { OrganizationAccessCodeForm, OrganizationPolicyJoinForm } from "@/components/OrganizationJoinForms";
+import { PendingInvitationResumption } from "@/components/PendingInvitationResumption";
 import { logout } from "@/lib/auth-actions";
 import { requireAuthenticatedUser, verifyEmailPath } from "@/lib/authz";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/lib/organization-discovery";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
 import { canCreateOrganizations } from "@/lib/organization-creation-policy";
+import { PENDING_INVITATION_COOKIE, readPendingInvitation } from "@/lib/pending-invitation";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
@@ -20,12 +23,16 @@ export const dynamic = "force-dynamic";
 export default async function OrganizationsPage({
   searchParams
 }: {
-  searchParams: { joined?: string | string[]; created?: string | string[] };
+  searchParams: { joined?: string | string[]; created?: string | string[]; invitation?: string | string[] };
 }) {
   const { user } = await requireAuthenticatedUser(organizationsPath);
 
   if (!user.emailVerifiedAt) {
     redirect(`${verifyEmailPath}?next=${encodeURIComponent(organizationsPath)}`);
+  }
+
+  if (readPendingInvitation(cookies().get(PENDING_INVITATION_COOKIE)?.value)) {
+    return <PendingInvitationResumption />;
   }
 
   const memberships = await prisma.membership.findMany({
@@ -38,6 +45,9 @@ export default async function OrganizationsPage({
   const activeMemberships = memberships.filter((membership) => membership.status === MembershipStatus.ACTIVE);
   const joinedSlug = Array.isArray(searchParams.joined) ? searchParams.joined[0] : searchParams.joined;
   const joinedMembership = activeMemberships.find((membership) => membership.organization.slug === joinedSlug);
+  const invitationProblem = invitationProblemMessage(
+    Array.isArray(searchParams.invitation) ? searchParams.invitation[0] : searchParams.invitation
+  );
   const createdSlug = Array.isArray(searchParams.created) ? searchParams.created[0] : searchParams.created;
   const createdMembership = activeMemberships.find((membership) => membership.organization.slug === createdSlug);
   const pendingMemberships = memberships.filter(
@@ -124,6 +134,16 @@ export default async function OrganizationsPage({
               <p className="mt-1 text-sm leading-6 text-muted">
                 {joinedMembership.organization.name} is now one of your organizations. Open its ladder below.
               </p>
+            </div>
+          </section>
+        ) : null}
+
+        {invitationProblem ? (
+          <section className="mb-8 flex max-w-3xl items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0 text-danger" size={22} />
+            <div>
+              <p className="font-black text-danger">Invitation could not be accepted</p>
+              <p className="mt-1 text-sm leading-6 text-muted">{invitationProblem}</p>
             </div>
           </section>
         ) : null}
@@ -305,5 +325,28 @@ function getPendingMembershipMessage(policy: string) {
       return "Verify your email domain again to activate access";
     default:
       return "Waiting for organization approval";
+  }
+}
+
+function invitationProblemMessage(outcome?: string) {
+  switch (outcome) {
+    case "expired":
+      return "The invitation you opened expired before your account was ready. Ask for a new invitation link.";
+    case "revoked":
+      return "The invitation you opened was revoked before your account was ready. Ask for a new invitation link.";
+    case "exhausted":
+      return "The invitation you opened reached its use limit before your account was ready. Ask for a new invitation link.";
+    case "pending":
+      return "Your membership request for that organization is still waiting for review.";
+    case "rejected":
+      return "Your membership request for that organization was rejected.";
+    case "suspended":
+      return "Your membership in that organization is suspended.";
+    case "removed":
+      return "Your membership in that organization was removed.";
+    case "invalid":
+      return "That invitation is no longer valid. Ask for a new invitation link.";
+    default:
+      return null;
   }
 }
