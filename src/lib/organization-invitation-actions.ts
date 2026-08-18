@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { getSessionUser, requireOrganizationAdmin } from "@/lib/authz";
@@ -12,6 +13,7 @@ import {
   type InvitationRedemptionResult
 } from "@/lib/organization-invitation";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { clearedPendingInvitationCookie } from "@/lib/pending-invitation";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -128,5 +130,12 @@ export async function redeemOrganizationInvitationAction(token: string): Promise
     throw error;
   }
 
-  return redeemOrganizationInvitation(token, sessionUser.user.id);
+  const redemption = await redeemOrganizationInvitation(token, sessionUser.user.id);
+
+  if (redemption.outcome === "redeemed" || redemption.outcome === "already_member") {
+    const cleared = clearedPendingInvitationCookie();
+    cookies().set(cleared.name, cleared.value, cleared.options);
+  }
+
+  return redemption;
 }

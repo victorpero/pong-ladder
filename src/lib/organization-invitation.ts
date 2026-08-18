@@ -19,6 +19,7 @@ export type InvitationInspection =
   | { availability: "invalid" }
   | {
       availability: Exclude<InvitationAvailability, "invalid">;
+      id: string;
       organization: { name: string };
       expiresAt: Date;
     };
@@ -73,6 +74,7 @@ export async function inspectOrganizationInvitation(token: string, now = new Dat
   const invitation = await prisma.organizationInvitation.findUnique({
     where: { tokenHash: hashOrganizationInvitationToken(token) },
     select: {
+      id: true,
       expiresAt: true,
       maxUses: true,
       useCount: true,
@@ -87,6 +89,7 @@ export async function inspectOrganizationInvitation(token: string, now = new Dat
 
   return {
     availability: getInvitationAvailability(invitation, now),
+    id: invitation.id,
     organization: invitation.organization,
     expiresAt: invitation.expiresAt
   };
@@ -101,12 +104,30 @@ export async function redeemOrganizationInvitation(
     return { outcome: "invalid" };
   }
 
-  const tokenHash = hashOrganizationInvitationToken(token);
+  return redeemInvitation({ tokenHash: hashOrganizationInvitationToken(token) }, userId, now);
+}
 
+export async function redeemOrganizationInvitationById(
+  invitationId: string,
+  userId: string,
+  now = new Date()
+): Promise<InvitationRedemptionResult> {
+  if (!invitationId) {
+    return { outcome: "invalid" };
+  }
+
+  return redeemInvitation({ id: invitationId }, userId, now);
+}
+
+async function redeemInvitation(
+  where: Prisma.OrganizationInvitationWhereUniqueInput,
+  userId: string,
+  now: Date
+): Promise<InvitationRedemptionResult> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await prisma.$transaction(
-        async (tx) => redeemInTransaction(tx, tokenHash, userId, now),
+        async (tx) => redeemInTransaction(tx, where, userId, now),
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
     } catch (error) {
@@ -116,7 +137,7 @@ export async function redeemOrganizationInvitation(
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         const membership = await prisma.membership.findFirst({
-          where: { userId, organization: { invitations: { some: { tokenHash } } } },
+          where: { userId, organization: { invitations: { some: where } } },
           select: { status: true, organization: { select: { name: true, slug: true } } }
         });
 
@@ -138,14 +159,14 @@ export async function redeemOrganizationInvitation(
 
 async function redeemInTransaction(
   tx: Prisma.TransactionClient,
-  tokenHash: string,
+  where: Prisma.OrganizationInvitationWhereUniqueInput,
   userId: string,
   now: Date
 ): Promise<InvitationRedemptionResult> {
   const [user, invitation] = await Promise.all([
     tx.user.findUnique({ where: { id: userId }, select: { emailVerifiedAt: true } }),
     tx.organizationInvitation.findUnique({
-      where: { tokenHash },
+      where,
       select: {
         id: true,
         organizationId: true,
