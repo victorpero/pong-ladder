@@ -17,7 +17,14 @@ const state = vi.hoisted(() => ({
   session: null as { sub: string } | null,
   ladder: [] as LadderRow[],
   challenges: [] as ChallengeRow[],
-  failCreateWithUniqueViolation: false
+  failCreateWithUniqueViolation: false,
+  notified: [] as string[]
+}));
+
+vi.mock("@/lib/challenge-notifications", () => ({
+  notifyChallengedPlayer: async (challengeId: string) => {
+    state.notified.push(challengeId);
+  }
 }));
 
 vi.mock("next/headers", () => ({
@@ -153,6 +160,7 @@ beforeEach(() => {
     { userId: "other", currentRank: 5, points: 14 }
   ];
   state.challenges = [];
+  state.notified = [];
 });
 
 describe("createChallenge duplicate prevention", () => {
@@ -228,6 +236,20 @@ describe("createChallenge duplicate prevention", () => {
     await expect(createChallenge(challengeForm("me"))).rejects.toThrow("Players cannot challenge themselves.");
   });
 
+  it("does not email anyone when the challenge is rejected as a duplicate", async () => {
+    state.challenges = [activeChallenge("me", "rival", ChallengeStatus.Pending)];
+
+    await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(duplicateActiveChallengeMessage);
+    expect(state.notified).toEqual([]);
+  });
+
+  it("does not email anyone when the unique index rejects the insert", async () => {
+    state.failCreateWithUniqueViolation = true;
+
+    await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(duplicateActiveChallengeMessage);
+    expect(state.notified).toEqual([]);
+  });
+
   it("still enforces the ladder window", async () => {
     state.ladder = [
       { userId: "me", currentRank: 9, points: 5 },
@@ -236,5 +258,21 @@ describe("createChallenge duplicate prevention", () => {
 
     await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
     expect(state.challenges).toHaveLength(0);
+    expect(state.notified).toEqual([]);
+  });
+});
+
+describe("createChallenge notifications", () => {
+  it("announces the committed challenge exactly once", async () => {
+    await createChallenge(challengeForm("rival"));
+
+    expect(state.notified).toEqual([state.challenges[0].id]);
+  });
+
+  it("sends no notification for a self-challenge", async () => {
+    await expect(createChallenge(challengeForm("me"))).rejects.toThrow(
+      "Players cannot challenge themselves."
+    );
+    expect(state.notified).toEqual([]);
   });
 });

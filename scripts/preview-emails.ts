@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { renderChallengeNotificationEmail } from "../src/lib/challenge-notification-email-template";
 import {
   renderGoogleSignInNoticeEmail,
   renderPasswordResetEmail
@@ -12,6 +13,7 @@ const VERIFICATION_URL =
   "https://pongladder.example/verify-email/confirm?token=example-token-not-a-secret&next=%2Fladder";
 const RESET_URL = "https://pongladder.example/reset-password?token=example-token-not-a-secret";
 const LOGIN_URL = "https://pongladder.example/login";
+const CHALLENGE_URL = "https://pongladder.example/org/example-club/challenges";
 
 const previews = [
   {
@@ -25,6 +27,14 @@ const previews = [
   {
     name: "google-sign-in-notice-email",
     email: renderGoogleSignInNoticeEmail({ loginUrl: LOGIN_URL })
+  },
+  {
+    name: "challenge-notification-email",
+    email: renderChallengeNotificationEmail({
+      challengerName: "Alex Example",
+      organizationName: "Example Club",
+      challengeUrl: CHALLENGE_URL
+    })
   }
 ];
 

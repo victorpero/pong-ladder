@@ -14,6 +14,7 @@ vi.mock("nodemailer", () => ({
 
 const {
   getEmailTransportConfig,
+  sendChallengeNotificationEmail,
   sendGoogleSignInNoticeEmail,
   sendPasswordResetEmail,
   sendVerificationEmail
@@ -169,6 +170,49 @@ describe("password reset email delivery", () => {
     });
 
     expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
+describe("challenge notification email delivery", () => {
+  afterEach(() => {
+    state.sent = [];
+    vi.unstubAllEnvs();
+  });
+
+  const message = {
+    to: "rival@example.com",
+    challengerName: "Alex Example",
+    organizationName: "Example Club",
+    challengeUrl: "https://pongladder.example/org/example-club/challenges"
+  };
+
+  it("reuses the shared sender identity and transport", async () => {
+    vi.stubEnv("EMAIL_DELIVERY_MODE", "smtp");
+    vi.stubEnv("SMTP_HOST", "smtp.example.com");
+    vi.stubEnv("EMAIL_FROM", "Pong Ladder <notifications@example.com>");
+    vi.stubEnv("SMTP_USER", "mailer");
+    vi.stubEnv("SMTP_PASSWORD", "example-only");
+
+    await sendChallengeNotificationEmail(message);
+
+    expect(state.sent).toHaveLength(1);
+    const [sent] = state.sent;
+    expect(sent.from).toBe("Pong Ladder <notifications@example.com>");
+    expect(sent.to).toBe("rival@example.com");
+    expect(sent.subject).toBe("You have a new Pong Ladder challenge");
+    expect(sent.html).toContain(">View challenge</a>");
+    expect(sent.text).toContain("https://pongladder.example/org/example-club/challenges");
+  });
+
+  it("keeps console delivery for local development", async () => {
+    vi.stubEnv("EMAIL_DELIVERY_MODE", "console");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    await sendChallengeNotificationEmail(message);
+
+    expect(state.sent).toHaveLength(0);
+    expect(info).toHaveBeenCalledOnce();
     info.mockRestore();
   });
 });

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { renderChallengeNotificationEmail } from "@/lib/challenge-notification-email-template";
 import {
   renderGoogleSignInNoticeEmail,
   renderPasswordResetEmail
@@ -20,6 +21,13 @@ type PasswordResetMessage = {
 type GoogleSignInNoticeMessage = {
   to: string;
   loginUrl: string;
+};
+
+type ChallengeNotificationMessage = {
+  to: string;
+  challengerName: string;
+  organizationName: string;
+  challengeUrl: string;
 };
 
 type RenderedEmail = {
@@ -109,4 +117,18 @@ export async function sendGoogleSignInNoticeEmail({ to, loginUrl }: GoogleSignIn
   }
 
   await deliver(to, renderGoogleSignInNoticeEmail({ loginUrl }));
+}
+
+export async function sendChallengeNotificationEmail({
+  to,
+  challengerName,
+  organizationName,
+  challengeUrl
+}: ChallengeNotificationMessage) {
+  if (deliveryMode() === "console") {
+    console.info(`[challenge notification] ${to}: ${challengeUrl}`);
+    return;
+  }
+
+  await deliver(to, renderChallengeNotificationEmail({ challengerName, organizationName, challengeUrl }));
 }
