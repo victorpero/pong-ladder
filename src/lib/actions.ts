@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOrganizationAdmin, requireOrganizationUser } from "@/lib/authz";
+import { notifyChallengedPlayer } from "@/lib/challenge-notifications";
 import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
@@ -264,8 +265,10 @@ export async function createChallenge(formData: FormData) {
     throw new Error("Players cannot challenge themselves.");
   }
 
+  let createdChallengeId: string;
+
   try {
-    await prisma.$transaction(async (tx) => {
+    createdChallengeId = await prisma.$transaction(async (tx) => {
       const season = await tx.season.findUnique({
         where: { id: seasonId },
         select: { organizationId: true }
@@ -313,7 +316,7 @@ export async function createChallenge(formData: FormData) {
         }
       });
 
-      await tx.challenge.create({
+      const challenge = await tx.challenge.create({
         data: {
           organizationId: season.organizationId,
           seasonId,
@@ -323,6 +326,8 @@ export async function createChallenge(formData: FormData) {
           status: ChallengeStatus.Pending
         }
       });
+
+      return challenge.id;
     });
   } catch (error) {
     // Two simultaneous requests both pass the lookup above; the unique index on
@@ -333,6 +338,9 @@ export async function createChallenge(formData: FormData) {
 
     throw error;
   }
+
+  // Only a committed challenge is announced, and a failed announcement leaves it in place.
+  await notifyChallengedPlayer(createdChallengeId);
 
   refreshApp(organization.slug);
 }

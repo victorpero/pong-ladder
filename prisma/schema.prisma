@@ -404,6 +404,7 @@ model Challenge {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   completedAt    DateTime?
+  notifiedAt     DateTime?
   season         Season          @relation(fields: [seasonId, organizationId], references: [id, organizationId], onDelete: Cascade)
   challenger     User            @relation("Challenger", fields: [challengerId], references: [id])
   challenged     User            @relation("Challenged", fields: [challengedId], references: [id])
