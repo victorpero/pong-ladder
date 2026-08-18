@@ -258,6 +258,17 @@ async function registerSeedMatch(input: {
     loserSets: input.loserSets
   });
 
+  const [winnerMembership, loserMembership] = await Promise.all([
+    prisma.membership.findUnique({
+      where: { userId_organizationId: { userId: input.winnerId, organizationId: winner.organizationId } },
+      select: { teamId: true }
+    }),
+    prisma.membership.findUnique({
+      where: { userId_organizationId: { userId: input.loserId, organizationId: loser.organizationId } },
+      select: { teamId: true }
+    })
+  ]);
+
   await prisma.match.create({
     data: {
       organizationId: winner.organizationId,
@@ -270,6 +281,8 @@ async function registerSeedMatch(input: {
       loserPointsBefore: loser.points,
       winnerPointsAfter: score.winnerPointsAfter,
       loserPointsAfter: score.loserPointsAfter,
+      winnerTeamId: winnerMembership?.teamId ?? null,
+      loserTeamId: loserMembership?.teamId ?? null,
       playedAt: input.playedAt,
       challengeId: input.challengeId
     }

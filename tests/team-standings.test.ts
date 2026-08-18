@@ -2,281 +2,286 @@ import { describe, expect, it } from "vitest";
 import { calculateMatchScore } from "@/lib/scoring";
 import {
   buildTeamStandings,
+  isInternalGame,
+  type TeamStanding,
   type TeamStandingMatch,
-  type TeamStandingPlayer,
   type TeamStandingTeam
 } from "@/lib/team-standings";
 
 const red: TeamStandingTeam = { id: "team-red", name: "Red" };
 const blue: TeamStandingTeam = { id: "team-blue", name: "Blue" };
-
-type PlayedMatch = {
-  winnerId: string;
-  loserId: string;
-  loserSets: 0 | 1 | 2;
-};
+const teams = [red, blue];
 
 /**
- * Replays a season the same way results are registered and rebuilt: points
- * start at zero and every match stores the points before and after it.
+ * Replays a season the way results are registered and rebuilt: points start at
+ * zero, every match stores the points before and after it, and every match keeps
+ * the team each player belonged to at that moment.
  */
-function playSeason(played: PlayedMatch[]) {
+function season(roster: Array<[userId: string, team: TeamStandingTeam | null]>) {
   const points = new Map<string, number>();
+  const teamIds = new Map(roster.map(([userId, team]) => [userId, team?.id ?? null]));
+  const seasonPlayers = new Set(roster.map(([userId]) => userId));
+  const matches: TeamStandingMatch[] = [];
+
   const pointsOf = (userId: string) => points.get(userId) ?? 0;
 
-  const matches = played.map((match) => {
-    const winnerPointsBefore = pointsOf(match.winnerId);
-    const loserPointsBefore = pointsOf(match.loserId);
-    const score = calculateMatchScore({
-      winnerPointsBefore,
-      loserPointsBefore,
-      winnerSets: 3,
-      loserSets: match.loserSets
-    });
+  return {
+    matches,
+    joinTeam(userId: string, team: TeamStandingTeam | null) {
+      teamIds.set(userId, team?.id ?? null);
+    },
+    leaveSeason(userId: string) {
+      seasonPlayers.delete(userId);
+    },
+    play(winnerId: string, loserId: string, loserSets: 0 | 1 | 2) {
+      const winnerPointsBefore = pointsOf(winnerId);
+      const loserPointsBefore = pointsOf(loserId);
+      const score = calculateMatchScore({ winnerPointsBefore, loserPointsBefore, winnerSets: 3, loserSets });
 
-    points.set(match.winnerId, score.winnerPointsAfter);
-    points.set(match.loserId, score.loserPointsAfter);
+      points.set(winnerId, score.winnerPointsAfter);
+      points.set(loserId, score.loserPointsAfter);
 
-    return {
-      winnerId: match.winnerId,
-      loserId: match.loserId,
-      winnerPointsBefore,
-      loserPointsBefore,
-      winnerPointsAfter: score.winnerPointsAfter,
-      loserPointsAfter: score.loserPointsAfter
-    } satisfies TeamStandingMatch;
+      matches.push({
+        winnerTeamId: teamIds.get(winnerId) ?? null,
+        loserTeamId: teamIds.get(loserId) ?? null,
+        winnerPointsBefore,
+        loserPointsBefore,
+        winnerPointsAfter: score.winnerPointsAfter,
+        loserPointsAfter: score.loserPointsAfter
+      });
+    },
+    standings() {
+      return buildTeamStandings({
+        teams,
+        players: [...seasonPlayers].map((userId) => ({ userId, teamId: teamIds.get(userId) ?? null })),
+        matches
+      });
+    }
+  };
+}
+
+function standingOf(standings: TeamStanding[], team: TeamStandingTeam) {
+  return standings.find((standing) => standing.id === team.id);
+}
+
+describe("isInternalGame", () => {
+  it("only treats two players of the same team as an internal game", () => {
+    expect(isInternalGame({ winnerTeamId: "team-red", loserTeamId: "team-red" })).toBe(true);
+    expect(isInternalGame({ winnerTeamId: "team-red", loserTeamId: "team-blue" })).toBe(false);
+    expect(isInternalGame({ winnerTeamId: "team-red", loserTeamId: null })).toBe(false);
+    expect(isInternalGame({ winnerTeamId: null, loserTeamId: null })).toBe(false);
   });
-
-  return { matches, pointsOf };
-}
-
-function seasonStandings(roster: Array<{ userId: string; team: TeamStandingTeam | null }>, played: PlayedMatch[]) {
-  const { matches, pointsOf } = playSeason(played);
-  const players: TeamStandingPlayer[] = roster.map((player) => ({
-    userId: player.userId,
-    points: pointsOf(player.userId),
-    team: player.team
-  }));
-
-  return buildTeamStandings({ players, matches });
-}
-
-function standingOf(standings: ReturnType<typeof buildTeamStandings>, teamId: string) {
-  return standings.find((team) => team.id === teamId);
-}
+});
 
 describe("buildTeamStandings", () => {
   it("awards no team points for a match between two players on the same team", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "b", team: red }
-      ],
-      [{ winnerId: "a", loserId: "b", loserSets: 2 }]
-    );
+    const play = season([
+      ["a", red],
+      ["b", red]
+    ]);
+    play.play("a", "b", 2);
 
-    expect(standings).toEqual([
-      {
-        id: "team-red",
-        name: "Red",
-        points: 0,
-        wins: 0,
-        losses: 0,
-        matchesPlayed: 0,
-        players: 2,
-        currentRank: 1
-      }
+    expect(play.standings()).toEqual([
+      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 2, currentRank: 1 }
     ]);
   });
 
   it("keeps awarding team points for matches between different teams", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "c", team: blue }
-      ],
-      [{ winnerId: "a", loserId: "c", loserSets: 1 }]
-    );
+    const play = season([
+      ["a", red],
+      ["c", blue]
+    ]);
+    play.play("a", "c", 1);
 
-    expect(standingOf(standings, "team-red")).toMatchObject({ points: 4, wins: 1, losses: 0, matchesPlayed: 1 });
-    expect(standingOf(standings, "team-blue")).toMatchObject({ points: 1, wins: 0, losses: 1, matchesPlayed: 1 });
+    const standings = play.standings();
+
+    expect(standingOf(standings, red)).toMatchObject({ points: 4, wins: 1, losses: 0, matchesPlayed: 1 });
+    expect(standingOf(standings, blue)).toMatchObject({ points: 1, wins: 0, losses: 1, matchesPlayed: 1 });
   });
 
   it("strips only the internal games from a team that also plays other teams", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "b", team: red },
-        { userId: "c", team: blue }
-      ],
-      [
-        { winnerId: "a", loserId: "c", loserSets: 1 },
-        { winnerId: "b", loserId: "a", loserSets: 2 },
-        { winnerId: "c", loserId: "b", loserSets: 0 }
-      ]
-    );
+    const play = season([
+      ["a", red],
+      ["b", red],
+      ["c", blue]
+    ]);
+    play.play("a", "c", 1);
+    play.play("b", "a", 2);
+    play.play("c", "b", 0);
+
+    const standings = play.standings();
 
     // a and b hold 13 ladder points between them, 9 of which they took off each
     // other; Red only keeps the 4 a won against Blue.
-    expect(standingOf(standings, "team-red")).toMatchObject({ points: 4, wins: 1, losses: 1, matchesPlayed: 2 });
-    expect(standingOf(standings, "team-blue")).toMatchObject({ wins: 1, losses: 1, matchesPlayed: 2 });
+    expect(standingOf(standings, red)).toMatchObject({ points: 4, wins: 1, losses: 1, matchesPlayed: 2 });
+    expect(standingOf(standings, blue)).toMatchObject({ wins: 1, losses: 1, matchesPlayed: 2 });
   });
 
   it("removes the leapfrog points an internal upset would otherwise add", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "b", team: red },
-        { userId: "c", team: blue }
-      ],
-      [
-        { winnerId: "a", loserId: "c", loserSets: 0 },
-        // b starts far behind a and leapfrogs past them by winning the internal game.
-        { winnerId: "b", loserId: "a", loserSets: 0 }
-      ]
-    );
+    const play = season([
+      ["a", red],
+      ["b", red],
+      ["c", blue]
+    ]);
+    play.play("a", "c", 0);
+    // b starts far behind a and leapfrogs past them by winning the internal game.
+    play.play("b", "a", 0);
 
-    expect(standingOf(standings, "team-red")).toMatchObject({ points: 5, wins: 1, losses: 0, matchesPlayed: 1 });
+    expect(standingOf(play.standings(), red)).toMatchObject({ points: 5, wins: 1, losses: 0, matchesPlayed: 1 });
   });
 
   it("keeps normal behaviour for matches involving an unteamed player", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "solo", team: null },
-        { userId: "other", team: null }
-      ],
-      [
-        { winnerId: "a", loserId: "solo", loserSets: 2 },
-        { winnerId: "solo", loserId: "other", loserSets: 0 }
-      ]
-    );
+    const play = season([
+      ["a", red],
+      ["solo", null],
+      ["other", null]
+    ]);
+    play.play("a", "solo", 2);
+    play.play("solo", "other", 0);
 
-    expect(standings).toEqual([
-      {
-        id: "team-red",
-        name: "Red",
-        points: 3,
-        wins: 1,
-        losses: 0,
-        matchesPlayed: 1,
-        players: 1,
-        currentRank: 1
-      }
+    expect(play.standings()).toEqual([
+      { id: "team-red", name: "Red", points: 3, wins: 1, losses: 0, matchesPlayed: 1, players: 1, currentRank: 1 }
     ]);
   });
 
-  it("treats a game between two unteamed players as an external match", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "solo", team: null },
-        { userId: "other", team: null }
-      ],
-      [{ winnerId: "solo", loserId: "other", loserSets: 1 }]
-    );
+  it("leaves teams out of the standings when they have no players and no matches", () => {
+    const play = season([
+      ["solo", null],
+      ["other", null]
+    ]);
+    play.play("solo", "other", 1);
 
-    expect(standings).toEqual([]);
+    expect(play.standings()).toEqual([]);
   });
 
-  it("recognises an internal game against a teammate who is not on the ladder", () => {
-    const { matches, pointsOf } = playSeason([{ winnerId: "a", loserId: "benched", loserSets: 2 }]);
+  it("still recognises an internal game against a teammate who left the season", () => {
+    const play = season([
+      ["a", red],
+      ["benched", red]
+    ]);
+    play.play("a", "benched", 2);
+    play.leaveSeason("benched");
 
-    const standings = buildTeamStandings({
-      players: [{ userId: "a", points: pointsOf("a"), team: red }],
-      matches,
-      teamIdByUserId: new Map([
-        ["a", red.id],
-        ["benched", red.id]
-      ])
-    });
-
-    expect(standings).toEqual([
-      {
-        id: "team-red",
-        name: "Red",
-        points: 0,
-        wins: 0,
-        losses: 0,
-        matchesPlayed: 0,
-        players: 1,
-        currentRank: 1
-      }
+    expect(play.standings()).toEqual([
+      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 1, currentRank: 1 }
     ]);
   });
 
   it("ranks teams by points and falls back to the team name", () => {
-    const standings = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "c", team: blue }
-      ],
-      [{ winnerId: "c", loserId: "a", loserSets: 2 }]
-    );
+    const play = season([
+      ["a", red],
+      ["c", blue]
+    ]);
+    play.play("c", "a", 2);
 
-    expect(standings.map((team) => [team.name, team.currentRank])).toEqual([
+    expect(play.standings().map((team) => [team.name, team.currentRank])).toEqual([
       ["Blue", 1],
       ["Red", 2]
     ]);
   });
 });
 
+describe("team changes after a match", () => {
+  it("keeps an internal game worthless after a teammate joins another team", () => {
+    const play = season([
+      ["a", red],
+      ["b", red]
+    ]);
+    play.play("a", "b", 1);
+    play.joinTeam("b", blue);
+
+    const standings = play.standings();
+
+    expect(standingOf(standings, red)).toMatchObject({ points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 1 });
+    expect(standingOf(standings, blue)).toMatchObject({ points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 1 });
+  });
+
+  it("keeps an internal game worthless after a teammate leaves their team", () => {
+    const play = season([
+      ["a", red],
+      ["b", red]
+    ]);
+    play.play("a", "b", 0);
+    play.joinTeam("b", null);
+
+    expect(standingOf(play.standings(), red)).toMatchObject({ points: 0, wins: 0, losses: 0, matchesPlayed: 0 });
+  });
+
+  it("keeps an inter-team result with the teams that played it", () => {
+    const play = season([
+      ["a", red],
+      ["c", blue]
+    ]);
+    play.play("a", "c", 1);
+    play.joinTeam("c", red);
+
+    const standings = play.standings();
+
+    expect(standingOf(standings, red)).toMatchObject({ points: 4, wins: 1, losses: 0, matchesPlayed: 1, players: 2 });
+    expect(standingOf(standings, blue)).toMatchObject({ points: 1, wins: 0, losses: 1, matchesPlayed: 1, players: 0 });
+  });
+
+  it("scores a rematch by the teams of the day", () => {
+    const play = season([
+      ["a", red],
+      ["b", red]
+    ]);
+    play.play("a", "b", 1);
+    play.joinTeam("b", blue);
+    play.play("a", "b", 0);
+
+    const standings = play.standings();
+
+    // Only the second meeting is an inter-team match: a moved from 4 to 9 points.
+    expect(standingOf(standings, red)).toMatchObject({ points: 5, wins: 1, losses: 0, matchesPlayed: 1 });
+    expect(standingOf(standings, blue)).toMatchObject({ points: 0, wins: 0, losses: 1, matchesPlayed: 1 });
+  });
+});
+
 describe("recalculated standings", () => {
-  const roster = [
-    { userId: "a", team: red },
-    { userId: "b", team: red },
-    { userId: "c", team: blue }
+  const roster: Array<[string, TeamStandingTeam | null]> = [
+    ["a", red],
+    ["b", red],
+    ["c", blue]
   ];
 
   it("excludes internal games when standings are rebuilt from the full history", () => {
-    const history: PlayedMatch[] = [
-      { winnerId: "a", loserId: "c", loserSets: 2 },
-      { winnerId: "b", loserId: "a", loserSets: 1 },
-      { winnerId: "b", loserId: "c", loserSets: 0 }
-    ];
+    const play = season(roster);
+    play.play("a", "c", 2);
+    play.play("b", "a", 1);
+    play.play("b", "c", 0);
 
-    const rebuilt = seasonStandings(roster, history);
+    const rebuilt = play.standings();
 
-    expect(standingOf(rebuilt, "team-red")).toMatchObject({ points: 8, wins: 2, losses: 0, matchesPlayed: 2 });
-    expect(standingOf(rebuilt, "team-blue")).toMatchObject({ points: 2, wins: 0, losses: 2, matchesPlayed: 2 });
+    expect(standingOf(rebuilt, red)).toMatchObject({ points: 8, wins: 2, losses: 0, matchesPlayed: 2 });
+    expect(standingOf(rebuilt, blue)).toMatchObject({ points: 2, wins: 0, losses: 2, matchesPlayed: 2 });
     // Standings are derived on every read, so replaying the same history again
     // can never double count or leave a stale total behind.
-    expect(seasonStandings(roster, history)).toEqual(rebuilt);
+    expect(play.standings()).toEqual(rebuilt);
   });
 
   it("does not leave stale totals when an internal result is edited", () => {
-    const edited = seasonStandings(roster, [
-      { winnerId: "a", loserId: "c", loserSets: 1 },
-      { winnerId: "a", loserId: "b", loserSets: 0 }
-    ]);
-    const reversed = seasonStandings(roster, [
-      { winnerId: "a", loserId: "c", loserSets: 1 },
-      { winnerId: "b", loserId: "a", loserSets: 2 }
-    ]);
+    const played = season(roster);
+    played.play("a", "c", 1);
+    played.play("a", "b", 0);
 
-    expect(edited).toEqual(reversed);
-    expect(standingOf(edited, "team-red")).toMatchObject({ points: 4, wins: 1, losses: 0, matchesPlayed: 1 });
+    const reversed = season(roster);
+    reversed.play("a", "c", 1);
+    reversed.play("b", "a", 2);
+
+    expect(played.standings()).toEqual(reversed.standings());
+    expect(standingOf(played.standings(), red)).toMatchObject({ points: 4, wins: 1, losses: 0, matchesPlayed: 1 });
   });
 
-  it("drops the team points again when a teammate switches onto the opponent's team", () => {
-    const played: PlayedMatch[] = [{ winnerId: "a", loserId: "b", loserSets: 1 }];
+  it("drops a removed result from the team totals", () => {
+    const play = season(roster);
+    play.play("a", "c", 2);
+    play.play("b", "c", 0);
 
-    const asInternal = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "b", team: red }
-      ],
-      played
-    );
-    const asExternal = seasonStandings(
-      [
-        { userId: "a", team: red },
-        { userId: "b", team: blue }
-      ],
-      played
-    );
+    const withBoth = play.standings();
+    play.matches.pop();
 
-    expect(standingOf(asInternal, "team-red")).toMatchObject({ points: 0, matchesPlayed: 0 });
-    expect(standingOf(asExternal, "team-red")).toMatchObject({ points: 4, wins: 1, matchesPlayed: 1 });
-    expect(standingOf(asExternal, "team-blue")).toMatchObject({ points: 1, losses: 1, matchesPlayed: 1 });
+    expect(standingOf(withBoth, red)).toMatchObject({ points: 10, wins: 2, matchesPlayed: 2 });
+    expect(standingOf(play.standings(), red)).toMatchObject({ points: 3, wins: 1, matchesPlayed: 1 });
   });
 });

@@ -58,40 +58,46 @@ export async function getLadder(seasonId: string) {
   );
 }
 
+/**
+ * Team standings come straight from the season's match rows, so they never mix a
+ * player's live point total with the match history it was built from.
+ */
 export async function getTeamLadder(seasonId: string) {
-  const ladder = await getLadder(seasonId);
-  const organizationId = ladder[0]?.organizationId;
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { organizationId: true }
+  });
 
-  if (!organizationId) {
+  if (!season) {
     return [];
   }
 
-  const [matches, memberships] = await Promise.all([
+  const [teams, players, matches] = await Promise.all([
+    prisma.team.findMany({
+      where: { organizationId: season.organizationId },
+      select: { id: true, name: true }
+    }),
+    prisma.seasonPlayer.findMany({
+      where: { seasonId, membership: { status: "ACTIVE" } },
+      select: { userId: true, membership: { select: { teamId: true } } }
+    }),
     prisma.match.findMany({
-      where: { seasonId, organizationId },
+      where: { seasonId, organizationId: season.organizationId },
       select: {
-        winnerId: true,
-        loserId: true,
+        winnerTeamId: true,
+        loserTeamId: true,
         winnerPointsBefore: true,
         winnerPointsAfter: true,
         loserPointsBefore: true,
         loserPointsAfter: true
       }
-    }),
-    prisma.membership.findMany({
-      where: { organizationId },
-      select: { userId: true, teamId: true }
     })
   ]);
 
   return buildTeamStandings({
-    players: ladder.map((entry) => ({
-      userId: entry.userId,
-      points: entry.points,
-      team: entry.user.team
-    })),
-    matches,
-    teamIdByUserId: new Map(memberships.map((membership) => [membership.userId, membership.teamId]))
+    teams,
+    players: players.map((player) => ({ userId: player.userId, teamId: player.membership.teamId })),
+    matches
   });
 }
 

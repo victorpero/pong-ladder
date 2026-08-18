@@ -2,13 +2,14 @@
  * Team standings are derived from registered match results, never stored, so a
  * rebuild always reflects the current match history.
  *
- * A player's season points are the sum of the points every one of their matches
- * awarded them, which is why an internal team game — both players on the same
- * team — would otherwise hand the team free points. Internal games still count
- * for the players themselves; they are stripped out here so they never move the
- * team's points, wins, losses or matches played. The players' own ladder points
- * are untouched, so a later match against another team is still scored against
- * whatever rank the internal game left them on.
+ * Every match carries the team each player belonged to when the result was
+ * registered. Those snapshots decide which team earned a result, so a player
+ * joining, leaving or switching a team later never reinterprets history: the
+ * points stay with the team that fielded the player at the time.
+ *
+ * A match between two players on the same team is an internal game. It still
+ * counts for the players themselves, but it awards its team nothing and counts
+ * as neither a team win nor a team loss.
  */
 
 export type TeamStandingTeam = {
@@ -18,13 +19,12 @@ export type TeamStandingTeam = {
 
 export type TeamStandingPlayer = {
   userId: string;
-  points: number;
-  team: TeamStandingTeam | null;
+  teamId: string | null;
 };
 
 export type TeamStandingMatch = {
-  winnerId: string;
-  loserId: string;
+  winnerTeamId: string | null;
+  loserTeamId: string | null;
   winnerPointsBefore: number;
   winnerPointsAfter: number;
   loserPointsBefore: number;
@@ -32,16 +32,12 @@ export type TeamStandingMatch = {
 };
 
 export type TeamStandingsInput = {
-  /** Season players counted towards their team, with their server-side team assignment. */
+  /** Teams of the organization, used for names and to ignore unknown snapshots. */
+  teams: TeamStandingTeam[];
+  /** Season players, counted as the team's current roster size. */
   players: TeamStandingPlayer[];
   /** Every registered match of the season. */
   matches: TeamStandingMatch[];
-  /**
-   * Team assignment for every organization member. Passing it lets internal
-   * games played by members who are not on the current ladder be recognised as
-   * internal; without it the ladder players are the only known assignments.
-   */
-  teamIdByUserId?: ReadonlyMap<string, string | null>;
 };
 
 export type TeamStanding = TeamStandingTeam & {
@@ -55,70 +51,51 @@ export type TeamStanding = TeamStandingTeam & {
 
 type TeamTotals = Omit<TeamStanding, "currentRank">;
 
+export function isInternalGame(match: Pick<TeamStandingMatch, "winnerTeamId" | "loserTeamId">) {
+  return match.winnerTeamId !== null && match.winnerTeamId === match.loserTeamId;
+}
+
 export function buildTeamStandings(input: TeamStandingsInput): TeamStanding[] {
-  const teamIdByUserId =
-    input.teamIdByUserId ?? new Map(input.players.map((player) => [player.userId, player.team?.id ?? null]));
-  const countedPlayerIds = new Set(input.players.map((player) => player.userId));
-  const teams = new Map<string, TeamTotals>();
+  const teams = new Map<string, TeamTotals>(
+    input.teams.map((team) => [
+      team.id,
+      { id: team.id, name: team.name, points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 0 }
+    ])
+  );
+
+  const teamOf = (teamId: string | null) => (teamId === null ? undefined : teams.get(teamId));
 
   for (const player of input.players) {
-    if (!player.team) {
-      continue;
+    const totals = teamOf(player.teamId);
+
+    if (totals) {
+      totals.players += 1;
     }
-
-    const totals = teams.get(player.team.id) ?? {
-      id: player.team.id,
-      name: player.team.name,
-      points: 0,
-      wins: 0,
-      losses: 0,
-      matchesPlayed: 0,
-      players: 0
-    };
-
-    totals.points += player.points;
-    totals.players += 1;
-    teams.set(totals.id, totals);
   }
 
   for (const match of input.matches) {
-    const winnerTeamId = teamIdByUserId.get(match.winnerId) ?? null;
-    const loserTeamId = teamIdByUserId.get(match.loserId) ?? null;
-    const isInternalGame = winnerTeamId !== null && winnerTeamId === loserTeamId;
-
-    if (!isInternalGame) {
-      const winnerTeam = winnerTeamId === null ? undefined : teams.get(winnerTeamId);
-      const loserTeam = loserTeamId === null ? undefined : teams.get(loserTeamId);
-
-      if (winnerTeam && countedPlayerIds.has(match.winnerId)) {
-        winnerTeam.wins += 1;
-        winnerTeam.matchesPlayed += 1;
-      }
-
-      if (loserTeam && countedPlayerIds.has(match.loserId)) {
-        loserTeam.losses += 1;
-        loserTeam.matchesPlayed += 1;
-      }
-
+    if (isInternalGame(match)) {
       continue;
     }
 
-    const team = teams.get(winnerTeamId);
+    const winnerTeam = teamOf(match.winnerTeamId);
+    const loserTeam = teamOf(match.loserTeamId);
 
-    if (!team) {
-      continue;
+    if (winnerTeam) {
+      winnerTeam.points += match.winnerPointsAfter - match.winnerPointsBefore;
+      winnerTeam.wins += 1;
+      winnerTeam.matchesPlayed += 1;
     }
 
-    if (countedPlayerIds.has(match.winnerId)) {
-      team.points -= match.winnerPointsAfter - match.winnerPointsBefore;
-    }
-
-    if (countedPlayerIds.has(match.loserId)) {
-      team.points -= match.loserPointsAfter - match.loserPointsBefore;
+    if (loserTeam) {
+      loserTeam.points += match.loserPointsAfter - match.loserPointsBefore;
+      loserTeam.losses += 1;
+      loserTeam.matchesPlayed += 1;
     }
   }
 
   return Array.from(teams.values())
+    .filter((team) => team.players > 0 || team.matchesPlayed > 0)
     .sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
     .map((team, index) => ({
       ...team,
