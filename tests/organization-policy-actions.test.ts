@@ -26,6 +26,12 @@ const state = vi.hoisted(() => ({
   auditActions: [] as string[]
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/authz", () => ({
   requireOrganizationAdmin: async () => {
@@ -74,6 +80,16 @@ function policyForm(policy: OrganizationJoinPolicy, domains = "") {
   formData.set("organizationSlug", "example");
   formData.set("joinPolicy", policy);
   formData.set("allowedEmailDomains", domains);
+  return formData;
+}
+
+function detailsForm(defaultLocale: string) {
+  const formData = new FormData();
+  formData.set("organizationSlug", "example");
+  formData.set("name", "Renamed Club");
+  formData.set("type", OrganizationType.SPORTS_CLUB);
+  formData.set("visibility", OrganizationVisibility.DISCOVERABLE);
+  formData.set("defaultLocale", defaultLocale);
   return formData;
 }
 
@@ -159,22 +175,29 @@ describe("organization join-policy administration", () => {
   });
 
   it("updates general settings without changing the immutable slug", async () => {
-    const formData = new FormData();
-    formData.set("organizationSlug", "example");
-    formData.set("name", "Renamed Club");
-    formData.set("type", OrganizationType.SPORTS_CLUB);
-    formData.set("visibility", OrganizationVisibility.DISCOVERABLE);
-
-    await expect(updateOrganizationDetails({}, formData)).resolves.toEqual({
+    await expect(updateOrganizationDetails({}, detailsForm("sv"))).resolves.toEqual({
       success: "Organization settings updated."
     });
     expect(state.organization).toMatchObject({
       slug: "example",
       name: "Renamed Club",
       type: OrganizationType.SPORTS_CLUB,
-      visibility: OrganizationVisibility.DISCOVERABLE
+      visibility: OrganizationVisibility.DISCOVERABLE,
+      defaultLocale: "sv"
     });
     expect(state.auditActions).toContain(OrganizationAuditAction.SETTINGS_UPDATED);
+  });
+
+  it("stores the organization default language and rejects unsupported values", async () => {
+    await expect(updateOrganizationDetails({}, detailsForm("en"))).resolves.toEqual({
+      success: "Organization settings updated."
+    });
+    expect(state.organization).toMatchObject({ defaultLocale: "en" });
+
+    await expect(updateOrganizationDetails({}, detailsForm("de"))).resolves.toEqual({
+      error: "Check the organization name, type, and visibility."
+    });
+    expect(state.organization).toMatchObject({ defaultLocale: "en" });
   });
 
   it("keeps the member invite code active when the discovery policy changes", async () => {

@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ validToken: true }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("@/lib/email-verification", () => ({
   consumeEmailVerification: vi.fn().mockImplementation(() => Promise.resolve(state.validToken))
 }));
@@ -30,7 +36,7 @@ describe("email verification confirmation redirect", () => {
     );
 
     expect(response.headers.get("location")).toBe(
-      "https://pongladder.com/verify-email?status=verified&next=%2Forganizations"
+      "https://pongladder.com/sv/verify-email?status=verified&next=%2Fsv%2Forganizations"
     );
   });
 
@@ -42,7 +48,7 @@ describe("email verification confirmation redirect", () => {
     );
 
     expect(response.headers.get("location")).toBe(
-      "https://pongladder.com/verify-email?status=invalid&next=%2Forganizations"
+      "https://pongladder.com/sv/verify-email?status=invalid&next=%2Fsv%2Forganizations"
     );
   });
 });

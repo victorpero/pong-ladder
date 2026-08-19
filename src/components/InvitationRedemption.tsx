@@ -2,14 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { t } from "@/lib/i18n/format";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import {
   redeemOrganizationInvitationAction,
   type RedeemInvitationState
 } from "@/lib/organization-invitation-actions";
 import { organizationsPath } from "@/lib/organization-paths";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 
 export function InvitationRedemption({ token, organizationName }: { token: string; organizationName: string }) {
   const router = useRouter();
+  const locale = useLocale();
+  const dictionary = useDictionary();
   const started = useRef(false);
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<RedeemInvitationState | null>(null);
@@ -24,54 +29,61 @@ export function InvitationRedemption({ token, organizationName }: { token: strin
       const redemption = await redeemOrganizationInvitationAction(token);
 
       if (redemption.outcome === "redeemed" || redemption.outcome === "already_member") {
-        router.replace(`${organizationsPath}?joined=${encodeURIComponent(redemption.organizationSlug)}`);
+        router.replace(`${organizationsPath(locale)}?joined=${encodeURIComponent(redemption.organizationSlug)}`);
         return;
       }
 
       setResult(redemption);
     });
-  }, [router, token]);
+  }, [locale, router, token]);
 
   if (!result) {
     return (
       <div className="mt-6 rounded-lg bg-court-50 p-4">
-        <p className="font-black text-court-700">{pending ? "Accepting invitation..." : "Preparing invitation..."}</p>
-        <p className="mt-1 text-sm text-muted">Your membership will be activated automatically.</p>
+        <p className="font-black text-court-700">
+          {pending ? dictionary.invitation.accepting : dictionary.invitation.preparing}
+        </p>
+        <p className="mt-1 text-sm text-muted">{dictionary.invitation.automaticActivation}</p>
       </div>
     );
   }
 
   return (
     <div className="mt-6 rounded-lg bg-red-50 p-4 text-left">
-      <p className="font-black text-danger">Invitation could not be accepted</p>
-      <p className="mt-1 text-sm leading-6 text-muted">{redemptionMessage(result, organizationName)}</p>
+      <p className="font-black text-danger">{dictionary.invitation.failedTitle}</p>
+      <p className="mt-1 text-sm leading-6 text-muted">
+        {redemptionMessage(dictionary, result, organizationName)}
+      </p>
     </div>
   );
 }
 
-function redemptionMessage(result: RedeemInvitationState, organizationName: string) {
+function redemptionMessage(dictionary: Dictionary, result: RedeemInvitationState, organizationName: string) {
+  const messages = dictionary.actions.invitationRedemption;
+  const organization = { organization: organizationName };
+
   switch (result.outcome) {
     case "expired":
-      return `This invitation to ${organizationName} has expired.`;
+      return t(messages.expired, organization);
     case "revoked":
-      return `This invitation to ${organizationName} was revoked.`;
+      return t(messages.revoked, organization);
     case "exhausted":
-      return `This invitation to ${organizationName} has reached its use limit.`;
+      return t(messages.exhausted, organization);
     case "verification_required":
-      return "Verify your email before accepting this invitation.";
+      return messages.verificationRequired;
     case "pending":
-      return `Your existing membership request for ${organizationName} is still pending.`;
+      return t(messages.pending, organization);
     case "rejected":
-      return `Your existing membership request for ${organizationName} was rejected.`;
+      return t(messages.rejected, organization);
     case "suspended":
-      return `Your membership in ${organizationName} is suspended.`;
+      return t(messages.suspended, organization);
     case "removed":
-      return `Your membership in ${organizationName} was removed.`;
+      return t(messages.removed, organization);
     case "authentication_required":
-      return "Log in before accepting this invitation.";
+      return messages.authenticationRequired;
     case "rate_limited":
-      return "Too many attempts. Wait a moment and try again.";
+      return messages.rateLimited;
     default:
-      return "This invitation is invalid or can no longer be used.";
+      return messages.invalid;
   }
 }

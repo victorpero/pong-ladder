@@ -3,13 +3,23 @@ import { EmptyState } from "@/components/EmptyState";
 import { createTeam, deleteTeam, joinTeam, leaveTeam } from "@/lib/actions";
 import { requireOrganizationUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { plural } from "@/lib/i18n/format";
 import { prisma } from "@/lib/prisma";
 import { organizationPath } from "@/lib/organization-paths";
 
-export default async function OrganizationTeamsPage({ organizationSlug }: { organizationSlug: string }) {
+export default async function OrganizationTeamsPage({
+  locale,
+  organizationSlug
+}: {
+  locale: Locale;
+  organizationSlug: string;
+}) {
+  const dictionary = getDictionary(locale);
   const { session, organization } = await requireOrganizationUser(
     organizationSlug,
-    organizationPath(organizationSlug, "teams")
+    organizationPath(locale, organizationSlug, "teams")
   );
 
   const [currentMembership, teams] = await Promise.all([
@@ -46,12 +56,12 @@ export default async function OrganizationTeamsPage({ organizationSlug }: { orga
     <main className="page-shell">
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="section-band">
-          <p className="label">Teams</p>
-          <h1 className="mt-1 text-3xl font-black">Team directory</h1>
+          <p className="label">{dictionary.teams.label}</p>
+          <h1 className="mt-1 text-3xl font-black">{dictionary.teams.heading}</h1>
 
           <div className="mt-6 grid gap-3">
             {teamsWithUsers.length === 0 ? (
-              <EmptyState title="No teams yet" body="Create the first team and invite players to join it." />
+              <EmptyState title={dictionary.teams.emptyTitle} body={dictionary.teams.emptyBody} />
             ) : (
               teamsWithUsers.map((team) => {
                 const isCurrentTeam = currentUser.teamId === team.id;
@@ -63,20 +73,20 @@ export default async function OrganizationTeamsPage({ organizationSlug }: { orga
                       <div>
                         <p className="text-lg font-black">{team.name}</p>
                         <p className="text-sm text-muted">
-                          {team.members.length} member{team.members.length === 1 ? "" : "s"}
+                          {plural(team.members.length, dictionary.teams.memberCount)}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {isCurrentTeam ? (
                           <span className="rounded-md border border-court-200 bg-court-50 px-3 py-2 text-sm font-black text-court-700">
-                            Your team
+                            {dictionary.teams.yourTeamBadge}
                           </span>
                         ) : (
                           <form action={joinTeam}>
                             <input type="hidden" name="organizationSlug" value={organizationSlug} />
                             <input type="hidden" name="teamId" value={team.id} />
                             <button className="button-secondary" type="submit">
-                              {currentUser.teamId ? "Switch team" : "Join team"}
+                              {currentUser.teamId ? dictionary.teams.switchTeam : dictionary.teams.joinTeam}
                             </button>
                           </form>
                         )}
@@ -85,7 +95,7 @@ export default async function OrganizationTeamsPage({ organizationSlug }: { orga
                             <input type="hidden" name="organizationSlug" value={organizationSlug} />
                             <input type="hidden" name="teamId" value={team.id} />
                             <button className="button-danger" type="submit">
-                              Delete
+                              {dictionary.common.delete}
                             </button>
                           </form>
                         ) : null}
@@ -94,7 +104,7 @@ export default async function OrganizationTeamsPage({ organizationSlug }: { orga
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       {team.members.length === 0 ? (
-                        <span className="text-sm text-muted">No members yet</span>
+                        <span className="text-sm text-muted">{dictionary.teams.noMembers}</span>
                       ) : (
                         team.members.map((member) => (
                           <span
@@ -115,32 +125,32 @@ export default async function OrganizationTeamsPage({ organizationSlug }: { orga
 
         <aside className="grid gap-4 self-start">
           <section className="section-band">
-            <h2 className="text-xl font-black">Your team</h2>
+            <h2 className="text-xl font-black">{dictionary.teams.yourTeamHeading}</h2>
             {currentUser.team ? (
               <>
                 <p className="mt-3 text-lg font-black">{currentUser.team.name}</p>
                 <form action={leaveTeam} className="mt-4">
                   <input type="hidden" name="organizationSlug" value={organizationSlug} />
                   <button className="button-danger" type="submit">
-                    Leave team
+                    {dictionary.teams.leaveTeam}
                   </button>
                 </form>
               </>
             ) : (
-              <p className="mt-3 text-sm text-muted">You are not on a team yet.</p>
+              <p className="mt-3 text-sm text-muted">{dictionary.teams.noTeam}</p>
             )}
           </section>
 
           <section className="section-band">
-            <h2 className="text-xl font-black">Create team</h2>
+            <h2 className="text-xl font-black">{dictionary.teams.createHeading}</h2>
             <form action={createTeam} className="mt-4 grid gap-3">
               <input type="hidden" name="organizationSlug" value={organizationSlug} />
               <label className="grid gap-1">
-                <span className="label">Team name</span>
+                <span className="label">{dictionary.teams.nameLabel}</span>
                 <input className="field" name="name" required minLength={2} maxLength={50} />
               </label>
               <button className="button" type="submit">
-                Create and join
+                {dictionary.teams.createButton}
               </button>
             </form>
           </section>

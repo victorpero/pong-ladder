@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@/lib/authz", () => ({
   getSessionUser: vi.fn(() => Promise.resolve(state.sessionUser)),
-  verifyEmailPath: "/verify-email"
+  verifyEmailPath: (locale: string) => `/${locale}/verify-email`
 }));
 
 vi.mock("@/lib/organization-invitation", async (importOriginal) => {
@@ -43,11 +43,11 @@ vi.mock("next/headers", () => ({
   })
 }));
 
-const { GET: continueInvitation } = await import("@/app/join/[token]/continue/route");
+const { GET: continueInvitation } = await import("@/app/[locale]/join/[token]/continue/route");
 const { resumePendingInvitationAction } = await import("@/lib/organization-invitation-actions");
 
 const token = "b".repeat(43);
-const joinPath = `/join/${token}`;
+const joinPath = `/sv/join/${token}`;
 
 describe("invitation handoff routes", () => {
   const originalBaseUrl = process.env.APP_BASE_URL;
@@ -70,10 +70,10 @@ describe("invitation handoff routes", () => {
 
   describe("starting the handoff", () => {
     it("remembers the invitation before sending a new visitor into account creation", async () => {
-      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { token } });
+      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { locale: "sv", token } });
 
       expect(response.headers.get("location")).toBe(
-        `https://pongladder.com/login?next=${encodeURIComponent(joinPath)}`
+        `https://pongladder.com/sv/login?next=${encodeURIComponent(joinPath)}`
       );
       expect(readPendingInvitation(response.cookies.get(PENDING_INVITATION_COOKIE)?.value)).toBe("invitation-1");
     });
@@ -81,10 +81,10 @@ describe("invitation handoff routes", () => {
     it("remembers the invitation while an authenticated user verifies their email", async () => {
       state.sessionUser = { user: { id: "user-1", email: "player@example.com", emailVerifiedAt: null } };
 
-      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { token } });
+      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { locale: "sv", token } });
 
       expect(response.headers.get("location")).toBe(
-        `https://pongladder.com/verify-email?next=${encodeURIComponent(joinPath)}`
+        `https://pongladder.com/sv/verify-email?next=${encodeURIComponent(joinPath)}`
       );
       expect(readPendingInvitation(response.cookies.get(PENDING_INVITATION_COOKIE)?.value)).toBe("invitation-1");
     });
@@ -92,7 +92,7 @@ describe("invitation handoff routes", () => {
     it("sends an eligible user straight to redemption without storing a handoff", async () => {
       state.sessionUser = { user: { id: "user-1", email: "player@example.com", emailVerifiedAt: new Date() } };
 
-      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { token } });
+      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { locale: "sv", token } });
 
       expect(response.headers.get("location")).toBe(`https://pongladder.com${joinPath}`);
       expect(response.cookies.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
@@ -101,16 +101,16 @@ describe("invitation handoff routes", () => {
     it("never stores a handoff for an invitation that can no longer be used", async () => {
       state.inspection = { availability: "revoked", id: "invitation-1", organization: { name: "Polisen" } };
 
-      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { token } });
+      const response = await continueInvitation(request(`${joinPath}/continue`), { params: { locale: "sv", token } });
 
       expect(response.headers.get("location")).toBe(`https://pongladder.com${joinPath}`);
       expect(response.cookies.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
     });
 
     it("rejects a malformed invitation credential without touching the database", async () => {
-      const response = await continueInvitation(request("/join/nope/continue"), { params: { token: "nope" } });
+      const response = await continueInvitation(request("/join/nope/continue"), { params: { locale: "sv", token: "nope" } });
 
-      expect(response.headers.get("location")).toBe("https://pongladder.com/join/invalid");
+      expect(response.headers.get("location")).toBe("https://pongladder.com/sv/join/invalid");
       expect(response.cookies.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
     });
   });

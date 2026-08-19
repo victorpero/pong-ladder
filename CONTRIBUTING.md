@@ -91,6 +91,21 @@ The command writes the HTML and plain-text versions to a temporary directory and
 
 Delivery configuration, the Resend free-tier limits the project runs against, and the challenge-notification flow are documented in [docs/email-delivery.md](docs/email-delivery.md).
 
+## Languages and translations
+
+Every page is served under a language segment, such as `/sv/org/polisen/ladder`. `src/app/[locale]/layout.tsx` resolves the language, sets the `lang` attribute, and hands the dictionary to client components through `LocaleProvider`.
+
+Interface text lives in `src/lib/i18n/dictionaries/en.ts` and `src/lib/i18n/dictionaries/sv.ts`. English defines the `Dictionary` type, so a key that is missing or misspelled in Swedish fails `npm run typecheck`, and `tests/locale-dictionaries.test.ts` fails when the two files drift apart or a placeholder changes.
+
+When you add interface text:
+
+- add the key to both dictionaries and read it through `getDictionary(locale)` on the server or `useDictionary()` in a client component;
+- interpolate names with `t(template, values)` and counts with `plural(count, forms)` instead of building sentences from fragments;
+- leave organization names, Pong Ladder, usernames, and other user-provided values untranslated, and translate only the sentence around them;
+- build links with the helpers in `src/lib/organization-paths.ts` so the active language stays in the address.
+
+Server actions read the active language from the locale cookie through `getRequestDictionary()`, which middleware keeps in step with the page the reader is on.
+
 ## Database changes
 
 Create Prisma migrations with a descriptive name and commit the generated migration alongside the schema change:

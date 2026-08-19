@@ -222,8 +222,13 @@ describe("getRival", () => {
 
 describe("formatWinRate", () => {
   it("renders a whole percentage", () => {
-    expect(formatWinRate(0)).toBe("0%");
-    expect(formatWinRate(2 / 3)).toBe("67%");
-    expect(formatWinRate(1)).toBe("100%");
+    expect(formatWinRate(0, "en")).toBe("0%");
+    expect(formatWinRate(2 / 3, "en")).toBe("67%");
+    expect(formatWinRate(1, "en")).toBe("100%");
+  });
+
+  it("uses the number formatting of the active language", () => {
+    // Swedish separates the number from the percent sign with a non-breaking space.
+    expect(formatWinRate(2 / 3, "sv").replace(/\u00a0/g, " ")).toBe("67 %");
   });
 });

@@ -1,6 +1,7 @@
 import { getAppBaseUrl } from "@/lib/app-url";
 import { getPublicPlayerName } from "@/lib/display-name";
 import { sendChallengeNotificationEmail } from "@/lib/email";
+import { resolveLocale } from "@/lib/i18n/config";
 import { organizationPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 
@@ -43,8 +44,8 @@ export async function notifyChallengedPlayer(challengeId: string) {
       select: {
         notifiedAt: true,
         challenger: { select: { id: true, username: true, fullName: true } },
-        challenged: { select: { email: true } },
-        season: { select: { organization: { select: { name: true, slug: true } } } }
+        challenged: { select: { email: true, locale: true } },
+        season: { select: { organization: { select: { name: true, slug: true, defaultLocale: true } } } }
       }
     });
 
@@ -59,6 +60,12 @@ export async function notifyChallengedPlayer(challengeId: string) {
     }
 
     const organization = challenge.season.organization;
+    // The email is sent outside a request, so the link uses the player's own language when they
+    // have chosen one and the organization's default otherwise.
+    const locale = resolveLocale({
+      userPreference: challenge.challenged.locale,
+      organizationDefault: organization.defaultLocale
+    });
 
     // Delivery comes first so a provider failure leaves the challenge un-notified and
     // retryable. The idempotency key, not the stored timestamp, is what keeps a retry or a
@@ -67,7 +74,7 @@ export async function notifyChallengedPlayer(challengeId: string) {
       to: recipient,
       challengerName: getPublicPlayerName(challenge.challenger),
       organizationName: organization.name,
-      challengeUrl: `${getAppBaseUrl()}${organizationPath(organization.slug, "challenges")}`,
+      challengeUrl: `${getAppBaseUrl()}${organizationPath(locale, organization.slug, "challenges")}`,
       idempotencyKey: challengeNotificationIdempotencyKey(challengeId)
     });
 

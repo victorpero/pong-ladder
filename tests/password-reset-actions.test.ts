@@ -17,6 +17,12 @@ const rateLimit = vi.hoisted(() => ({
   }
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("@/lib/rate-limit", () => ({
   RateLimitError: rateLimit.ErrorClass,
   getClientRateLimitKey: (scope: string, identifier = "default") => `${scope}:${identifier}`,

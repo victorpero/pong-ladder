@@ -5,24 +5,34 @@ import { StatCard } from "@/components/StatCard";
 import { requireOrganizationUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { plural, t } from "@/lib/i18n/format";
 import { getRival } from "@/lib/player-stats";
 import { getActiveSeason, getLadder, getPlayerMatches, getTeamLadder } from "@/lib/queries";
 import { shouldShowSeasonJoinPrompt } from "@/lib/season-join-prompt";
 import { getTeamDisplayName } from "@/lib/team-display";
 import { organizationPath } from "@/lib/organization-paths";
 
-export default async function OrganizationLadderPage({ organizationSlug }: { organizationSlug: string }) {
+export default async function OrganizationLadderPage({
+  locale,
+  organizationSlug
+}: {
+  locale: Locale;
+  organizationSlug: string;
+}) {
+  const dictionary = getDictionary(locale);
   const { session, organization } = await requireOrganizationUser(
     organizationSlug,
-    organizationPath(organizationSlug, "ladder")
+    organizationPath(locale, organizationSlug, "ladder")
   );
   const season = await getActiveSeason(organization.id);
 
   if (!season) {
     return (
       <main className="page-shell">
-        <EmptyState title="No active season" body="The current fixed season could not be loaded." />
+        <EmptyState title={dictionary.ladder.noSeasonTitle} body={dictionary.ladder.noSeasonBody} />
       </main>
     );
   }
@@ -48,19 +58,25 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
     <main className="page-shell">
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <div className="section-band">
-          <p className="label">Active season</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Season {seasonLabel}</h1>
+          <p className="label">{dictionary.ladder.activeSeasonLabel}</p>
+          <h1 className="mt-2 text-3xl font-black sm:text-4xl">
+            {t(dictionary.ladder.seasonHeading, { season: seasonLabel })}
+          </h1>
           <p className="mt-2 text-sm font-semibold text-muted">
-            {formatDate(season.startsAt)} to {formatDate(season.endsAt ?? season.startsAt)}
+            {t(dictionary.ladder.seasonRange, {
+              start: formatDate(season.startsAt, locale),
+              end: formatDate(season.endsAt ?? season.startsAt, locale)
+            })}
           </p>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-            Challenge players above you, register best-of-five results, and climb the season points ladder.
-          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{dictionary.ladder.intro}</p>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Players" value={ladder.length} />
-          <StatCard label="Teams" value={teamLadder.length} />
-          <StatCard label="Days left" value={`${daysUntilNextSeason} day${daysUntilNextSeason === 1 ? "" : "s"}`} />
+          <StatCard label={dictionary.ladder.players} value={formatNumber(ladder.length, locale)} />
+          <StatCard label={dictionary.ladder.teams} value={formatNumber(teamLadder.length, locale)} />
+          <StatCard
+            label={dictionary.ladder.daysLeft}
+            value={plural(daysUntilNextSeason, dictionary.ladder.dayCount)}
+          />
         </div>
       </section>
 
@@ -77,27 +93,27 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
       <section className="section-band">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <p className="label">Ladder</p>
-            <h2 className="mt-1 text-2xl font-black">Current standings</h2>
+            <p className="label">{dictionary.ladder.label}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.ladder.standingsHeading}</h2>
           </div>
-          <Link className="button" href={organizationPath(organizationSlug, "challenges")}>
-            Challenge player
+          <Link className="button" href={organizationPath(locale, organizationSlug, "challenges")}>
+            {dictionary.ladder.challengePlayer}
           </Link>
         </div>
 
         {ladder.length === 0 ? (
-          <EmptyState title="The ladder is empty" body="Add players and join them to the active season." />
+          <EmptyState title={dictionary.ladder.emptyTitle} body={dictionary.ladder.emptyBody} />
         ) : (
           <div className="grid gap-3">
             {ladder.map((entry, index) => (
               <Link
-                href={organizationPath(organizationSlug, "players", entry.userId)}
+                href={organizationPath(locale, organizationSlug, "players", entry.userId)}
                 key={entry.id}
                 className={`rank-in grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(entry.currentRank).row}`}
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
-                  <p className="stat-label">Rank</p>
+                  <p className="stat-label">{dictionary.common.rank}</p>
                   <RankBadge rank={entry.currentRank} />
                 </div>
                 <div>
@@ -105,16 +121,16 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
                     {publicNames.get(entry.userId) ?? entry.user.username}
                     {entry.userId === rivalId ? (
                       <span className="ml-2 rounded-full bg-court-700 px-2 py-0.5 text-xs font-black align-middle text-white">
-                        Rival
+                        {dictionary.ladder.rivalBadge}
                       </span>
                     ) : null}
                   </p>
                   <p className="text-sm text-muted">{getTeamDisplayName(entry.user)}</p>
                 </div>
-                <Score label="Points" value={entry.points} strong />
-                <Score label="Played" value={entry.matchesPlayed} />
-                <Score label="Wins" value={entry.wins} tone="success" />
-                <Score label="Losses" value={entry.losses} tone="danger" />
+                <Score label={dictionary.common.points} value={entry.points} locale={locale} strong />
+                <Score label={dictionary.common.played} value={entry.matchesPlayed} locale={locale} />
+                <Score label={dictionary.common.wins} value={entry.wins} locale={locale} tone="success" />
+                <Score label={dictionary.common.losses} value={entry.losses} locale={locale} tone="danger" />
               </Link>
             ))}
           </div>
@@ -124,16 +140,18 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
       <section className="section-band mt-6">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <p className="label">Team ladder</p>
-            <h2 className="mt-1 text-2xl font-black">Season {seasonLabel} team standings</h2>
+            <p className="label">{dictionary.ladder.teamLadderLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">
+              {t(dictionary.ladder.teamStandingsHeading, { season: seasonLabel })}
+            </h2>
           </div>
-          <Link className="button-secondary" href={organizationPath(organizationSlug, "teams")}>
-            Manage teams
+          <Link className="button-secondary" href={organizationPath(locale, organizationSlug, "teams")}>
+            {dictionary.ladder.manageTeams}
           </Link>
         </div>
 
         {teamLadder.length === 0 ? (
-          <EmptyState title="No team standings yet" body="Join a team to appear on the season team ladder." />
+          <EmptyState title={dictionary.ladder.teamEmptyTitle} body={dictionary.ladder.teamEmptyBody} />
         ) : (
           <div className="grid gap-3">
             {teamLadder.map((team, index) => (
@@ -143,19 +161,17 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
-                  <p className="stat-label">Rank</p>
+                  <p className="stat-label">{dictionary.common.rank}</p>
                   <RankBadge rank={team.currentRank} />
                 </div>
                 <div>
                   <p className="text-lg font-black">{team.name}</p>
-                  <p className="text-sm text-muted">
-                    {team.players} player{team.players === 1 ? "" : "s"}
-                  </p>
+                  <p className="text-sm text-muted">{plural(team.players, dictionary.ladder.teamPlayerCount)}</p>
                 </div>
-                <Score label="Points" value={team.points} strong />
-                <Score label="Played" value={team.matchesPlayed} />
-                <Score label="Wins" value={team.wins} tone="success" />
-                <Score label="Losses" value={team.losses} tone="danger" />
+                <Score label={dictionary.common.points} value={team.points} locale={locale} strong />
+                <Score label={dictionary.common.played} value={team.matchesPlayed} locale={locale} />
+                <Score label={dictionary.common.wins} value={team.wins} locale={locale} tone="success" />
+                <Score label={dictionary.common.losses} value={team.losses} locale={locale} tone="danger" />
               </article>
             ))}
           </div>
@@ -200,11 +216,13 @@ function getRankStyles(rank: number) {
 function Score({
   label,
   value,
+  locale,
   strong,
   tone
 }: {
   label: string;
   value: number;
+  locale: Locale;
   strong?: boolean;
   tone?: "success" | "danger" | "neutral";
 }) {
@@ -213,7 +231,9 @@ function Score({
   return (
     <div>
       <p className="stat-label">{label}</p>
-      <p className={`${strong ? "text-2xl font-black" : "text-xl font-bold"} ${toneClass}`}>{value}</p>
+      <p className={`${strong ? "text-2xl font-black" : "text-xl font-bold"} ${toneClass}`}>
+        {formatNumber(value, locale)}
+      </p>
     </div>
   );
 }

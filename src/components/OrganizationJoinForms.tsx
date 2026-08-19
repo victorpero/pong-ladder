@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormState, useFormStatus } from "react-dom";
+import { useDictionary } from "@/lib/i18n/locale-context";
 import {
   joinOrganizationByPolicy,
   joinOrganizationWithAccessCode,
@@ -10,23 +11,24 @@ import {
 const initialState: OrganizationJoinState = {};
 
 export function OrganizationAccessCodeForm() {
+  const dictionary = useDictionary();
   const [state, action] = useFormState(joinOrganizationWithAccessCode, initialState);
 
   return (
     <form action={action} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
       <label className="grid gap-1">
-        <span className="label">Organization code</span>
+        <span className="label">{dictionary.organizations.accessCodeForm.label}</span>
         <input
           className="field font-mono uppercase tracking-wider"
           name="accessCode"
           autoComplete="off"
-          placeholder="XXXX-XXXX-XXXX"
+          placeholder={dictionary.organizations.accessCodeForm.placeholder}
           minLength={12}
           maxLength={20}
           required
         />
       </label>
-      <JoinButton label="Join organization" pendingLabel="Checking..." />
+      <JoinButton label={dictionary.organizations.accessCodeForm.submit} pendingLabel={dictionary.common.checking} />
       <JoinMessage state={state} className="sm:col-span-2" />
     </form>
   );
@@ -39,12 +41,13 @@ export function OrganizationPolicyJoinForm({
   organizationId: string;
   label: string;
 }) {
+  const dictionary = useDictionary();
   const [state, action] = useFormState(joinOrganizationByPolicy, initialState);
 
   return (
     <form action={action} className="mt-4 grid gap-3">
       <input type="hidden" name="organizationId" value={organizationId} />
-      <JoinButton label={label} pendingLabel="Joining..." />
+      <JoinButton label={label} pendingLabel={dictionary.organizations.joining} />
       <JoinMessage state={state} />
     </form>
   );

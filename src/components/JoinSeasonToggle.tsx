@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { joinCurrentSeason } from "@/lib/actions";
+import { useDictionary } from "@/lib/i18n/locale-context";
 import { isSeasonJoinSubmitDisabled, shouldShowSeasonJoinPrompt } from "@/lib/season-join-prompt";
 
 export function JoinSeasonToggle({
@@ -37,6 +38,7 @@ function JoinSeasonCheckbox({
   hasActiveSeason: boolean;
   formRef: React.RefObject<HTMLFormElement>;
 }) {
+  const dictionary = useDictionary();
   const { pending } = useFormStatus();
   const disabled = isSeasonJoinSubmitDisabled({ joined, hasActiveSeason, pending });
 
@@ -54,15 +56,13 @@ function JoinSeasonCheckbox({
         }}
       />
       <span>
-        <span className="block text-sm font-black">Join current season</span>
+        <span className="block text-sm font-black">{dictionary.seasonJoin.heading}</span>
         <span className="mt-1 block text-xs leading-5 text-muted">
-          {pending
-            ? "Joining the active season..."
-            : "Check this to join the active season and become available for matches and challenges."}
+          {pending ? dictionary.seasonJoin.joining : dictionary.seasonJoin.help}
         </span>
       </span>
       <button className="sr-only" type="submit" disabled={disabled}>
-        Join current season
+        {dictionary.seasonJoin.heading}
       </button>
     </label>
   );

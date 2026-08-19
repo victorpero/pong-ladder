@@ -2,11 +2,15 @@ import { MembershipRole, MembershipStatus } from "@prisma/client";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { organizationPath } from "@/lib/organization-paths";
+import type { Locale } from "@/lib/i18n/config";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { appPath, loginPath, organizationPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
 
-export const verifyEmailPath = "/verify-email";
+export function verifyEmailPath(locale: Locale) {
+  return appPath(locale, "/verify-email");
+}
 
 export class OrganizationAccessError extends Error {
   constructor(message = "Organization access required.") {
@@ -92,17 +96,19 @@ export async function requireAuthenticatedUser(nextPath: string) {
   const sessionUser = await getSessionUser();
 
   if (!sessionUser) {
-    redirect(`/login?next=${nextPath}`);
+    redirect(loginPath(getRequestLocale(), nextPath));
   }
 
   return sessionUser;
 }
 
-export async function requireOrganizationUser(organizationSlug: string, nextPath = organizationPath(organizationSlug)) {
+export async function requireOrganizationUser(organizationSlug: string, requestedNextPath?: string) {
+  const locale = getRequestLocale();
+  const nextPath = requestedNextPath ?? organizationPath(locale, organizationSlug);
   const sessionUser = await requireAuthenticatedUser(nextPath);
 
   if (!sessionUser.user.emailVerifiedAt) {
-    redirect(`${verifyEmailPath}?next=${encodeURIComponent(nextPath)}`);
+    redirect(`${verifyEmailPath(locale)}?next=${encodeURIComponent(nextPath)}`);
   }
 
   const membership = await prisma.membership.findFirst({
@@ -121,10 +127,8 @@ export async function requireOrganizationUser(organizationSlug: string, nextPath
   return { ...sessionUser, organization: membership.organization, membership };
 }
 
-export async function requireOrganizationAdmin(
-  organizationSlug: string,
-  nextPath = organizationPath(organizationSlug, "admin")
-) {
+export async function requireOrganizationAdmin(organizationSlug: string, requestedNextPath?: string) {
+  const nextPath = requestedNextPath ?? organizationPath(getRequestLocale(), organizationSlug, "admin");
   const context = await requireOrganizationUser(organizationSlug, nextPath);
 
   if (context.membership.role !== MembershipRole.OWNER && context.membership.role !== MembershipRole.ADMIN) {
@@ -134,10 +138,8 @@ export async function requireOrganizationAdmin(
   return context;
 }
 
-export async function requireOrganizationOwner(
-  organizationSlug: string,
-  nextPath = organizationPath(organizationSlug, "admin")
-) {
+export async function requireOrganizationOwner(organizationSlug: string, requestedNextPath?: string) {
+  const nextPath = requestedNextPath ?? organizationPath(getRequestLocale(), organizationSlug, "admin");
   const context = await requireOrganizationUser(organizationSlug, nextPath);
 
   if (context.membership.role !== MembershipRole.OWNER) {

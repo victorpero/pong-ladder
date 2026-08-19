@@ -6,14 +6,24 @@ import { requireOrganizationUser } from "@/lib/authz";
 import { canChallengePlayer, getActiveChallengeOpponentIds, splitActiveChallengeTargets } from "@/lib/challenge-rules";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { compactDate } from "@/lib/format";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { t } from "@/lib/i18n/format";
 import { prisma } from "@/lib/prisma";
 import { getActiveSeason, getLadder } from "@/lib/queries";
 import { organizationPath } from "@/lib/organization-paths";
 
-export default async function OrganizationChallengesPage({ organizationSlug }: { organizationSlug: string }) {
+export default async function OrganizationChallengesPage({
+  locale,
+  organizationSlug
+}: {
+  locale: Locale;
+  organizationSlug: string;
+}) {
+  const dictionary = getDictionary(locale);
   const { session, organization } = await requireOrganizationUser(
     organizationSlug,
-    organizationPath(organizationSlug, "challenges")
+    organizationPath(locale, organizationSlug, "challenges")
   );
   const season = await getActiveSeason(organization.id);
   const ladder = season ? await getLadder(season.id) : [];
@@ -55,7 +65,7 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
   const challengeOptions = availableChallengeTargets.map((entry) => ({
     id: entry.userId,
     label: `${publicNames.get(entry.userId) ?? entry.user.username} (#${entry.currentRank})`,
-    detail: `${entry.points} pts`
+    detail: t(dictionary.matches.playerRankDetail, { rank: entry.currentRank, points: entry.points })
   }));
   const currentPlayerName = currentPlayer
     ? publicNames.get(currentPlayer.userId) ?? currentPlayer.user.username
@@ -65,15 +75,12 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
     <main className="page-shell">
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="section-band">
-          <p className="label">Challenges</p>
-          <h1 className="mt-1 text-3xl font-black">Challenge board</h1>
+          <p className="label">{dictionary.challenges.label}</p>
+          <h1 className="mt-1 text-3xl font-black">{dictionary.challenges.heading}</h1>
 
           <div className="mt-6 grid gap-3">
             {challenges.length === 0 ? (
-              <EmptyState
-                title="No challenges yet"
-                body="Create a challenge against a player within 3 positions above or below you."
-              />
+              <EmptyState title={dictionary.challenges.emptyTitle} body={dictionary.challenges.emptyBody} />
             ) : (
               challenges.map((challenge) => {
                 const needsResponse = isIncomingPendingChallenge(challenge, session?.sub);
@@ -92,19 +99,20 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
                       <div>
                         {needsResponse ? (
                           <p className="mb-2 inline-flex rounded-full bg-court-700 px-2.5 py-1 text-xs font-black text-white">
-                            Needs your response
+                            {dictionary.challenges.needsResponse}
                           </p>
                         ) : null}
                         <p className={needsResponse ? "text-xl font-black" : "text-lg font-black"}>
                           {publicNames.get(challenge.challengerId) ?? challenge.challenger.username}{" "}
-                          <span className="font-bold text-muted">challenges</span>{" "}
+                          <span className="font-bold text-muted">{dictionary.challenges.challengesVerb}</span>{" "}
                           {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                         </p>
                         <p className="text-sm text-muted">
-                          {compactDate(challenge.createdAt)} · declines: {challenge.declinedCount}
+                          {compactDate(challenge.createdAt, locale)} ·{" "}
+                          {t(dictionary.challenges.declines, { count: challenge.declinedCount })}
                         </p>
                       </div>
-                      <StatusBadge status={challenge.status} />
+                      <StatusBadge status={challenge.status} locale={locale} />
                     </div>
 
                     {needsResponse ? (
@@ -113,14 +121,14 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
                           <input type="hidden" name="organizationSlug" value={organizationSlug} />
                           <input type="hidden" name="challengeId" value={challenge.id} />
                           <button className="button" type="submit">
-                            Accept
+                            {dictionary.challenges.accept}
                           </button>
                         </form>
                         <form action={declineChallenge}>
                           <input type="hidden" name="organizationSlug" value={organizationSlug} />
                           <input type="hidden" name="challengeId" value={challenge.id} />
                           <button className="button-danger" type="submit">
-                            Decline
+                            {dictionary.challenges.decline}
                           </button>
                         </form>
                       </div>
@@ -133,33 +141,35 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
         </section>
 
         <aside className="section-band self-start">
-          <h2 className="text-xl font-black">Create challenge</h2>
+          <h2 className="text-xl font-black">{dictionary.challenges.createHeading}</h2>
           {!session ? (
-            <p className="mt-3 text-sm text-muted">Log in before creating challenges.</p>
+            <p className="mt-3 text-sm text-muted">{dictionary.challenges.loginFirst}</p>
           ) : !season || !currentPlayer ? (
-            <p className="mt-3 text-sm text-muted">Join the active season before creating challenges.</p>
+            <p className="mt-3 text-sm text-muted">{dictionary.challenges.joinSeasonFirst}</p>
           ) : (
             <form action={createChallenge} className="mt-4 grid gap-3">
               <input type="hidden" name="organizationSlug" value={organizationSlug} />
               <input type="hidden" name="seasonId" value={season.id} />
               <label className="grid gap-1">
-                <span className="label">Challenger</span>
+                <span className="label">{dictionary.challenges.challengerLabel}</span>
                 <input className="field" value={currentPlayerName} readOnly />
               </label>
               <PlayerCombobox
                 name="challengedId"
-                label="Challenged player"
+                label={dictionary.challenges.challengedLabel}
                 players={challengeOptions}
                 disabled={challengeOptions.length === 0}
               />
               <button className="button" type="submit" disabled={challengeOptions.length === 0}>
-                Create challenge
+                {dictionary.challenges.createButton}
               </button>
               {blockedActiveTargets.length > 0 ? (
                 <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-                  You already have an active challenge with{" "}
-                  {blockedActiveTargets.map((entry) => publicNames.get(entry.userId) ?? entry.user.username).join(", ")}.
-                  Finish it before starting another.
+                  {t(dictionary.challenges.blockedTargets, {
+                    players: blockedActiveTargets
+                      .map((entry) => publicNames.get(entry.userId) ?? entry.user.username)
+                      .join(", ")
+                  })}
                 </p>
               ) : null}
             </form>
