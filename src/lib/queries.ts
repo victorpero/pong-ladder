@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
-import { buildTeamStandings } from "@/lib/team-standings";
+import { buildTeamStandings, recordedTeamResultWhere } from "@/lib/team-standings";
 
 export async function getActiveSeason(organizationId: string) {
   return prisma.$transaction(async (tx) => {
@@ -99,6 +99,32 @@ export async function getTeamLadder(seasonId: string) {
     players: players.map((player) => ({ userId: player.userId, teamId: player.membership.teamId })),
     matches
   });
+}
+
+/**
+ * Teams that already appear on a recorded result. They carry season history even
+ * with an empty roster, so the teams page keeps them out of reach of deletion.
+ */
+export async function getTeamIdsWithRecordedResults(organizationId: string) {
+  const matches = await prisma.match.findMany({
+    where: { organizationId },
+    select: { winnerTeamId: true, loserTeamId: true },
+    distinct: ["winnerTeamId", "loserTeamId"]
+  });
+
+  const teamIds = new Set<string>();
+
+  for (const match of matches) {
+    if (match.winnerTeamId) {
+      teamIds.add(match.winnerTeamId);
+    }
+
+    if (match.loserTeamId) {
+      teamIds.add(match.loserTeamId);
+    }
+  }
+
+  return teamIds;
 }
 
 /**

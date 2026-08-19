@@ -22,6 +22,7 @@ import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
 import { revalidateOrganizationSections } from "@/lib/revalidation";
+import { recordedTeamResultWhere } from "@/lib/team-standings";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -241,6 +242,16 @@ export async function deleteTeam(formData: FormData) {
 
     if (memberCount > 0) {
       throw new Error("Only teams without members can be deleted.");
+    }
+
+    // Standings resolve the team snapshot on every match through the team rows,
+    // so deleting a team that has played would erase its history from them.
+    const recordedResults = await tx.match.count({
+      where: { organizationId: organization.id, ...recordedTeamResultWhere(teamId) }
+    });
+
+    if (recordedResults > 0) {
+      throw new Error("Teams with recorded match results cannot be deleted.");
     }
 
     const deleted = await tx.team.deleteMany({ where: { id: teamId, organizationId: organization.id } });

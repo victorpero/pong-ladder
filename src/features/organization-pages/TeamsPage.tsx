@@ -8,6 +8,7 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { plural } from "@/lib/i18n/format";
 import { prisma } from "@/lib/prisma";
 import { organizationPath } from "@/lib/organization-paths";
+import { getTeamIdsWithRecordedResults } from "@/lib/queries";
 
 export default async function OrganizationTeamsPage({
   locale,
@@ -22,7 +23,7 @@ export default async function OrganizationTeamsPage({
     organizationPath(locale, organizationSlug, "teams")
   );
 
-  const [currentMembership, teams] = await Promise.all([
+  const [currentMembership, teams, teamIdsWithResults] = await Promise.all([
     prisma.membership.findUnique({
       where: { userId_organizationId: { userId: session.sub, organizationId: organization.id } },
       include: { user: true, team: true }
@@ -37,7 +38,8 @@ export default async function OrganizationTeamsPage({
         }
       },
       orderBy: { name: "asc" }
-    })
+    }),
+    getTeamIdsWithRecordedResults(organization.id)
   ]);
 
   if (!currentMembership) {
@@ -65,7 +67,10 @@ export default async function OrganizationTeamsPage({
             ) : (
               teamsWithUsers.map((team) => {
                 const isCurrentTeam = currentUser.teamId === team.id;
-                const isEmptyTeam = team.members.length === 0;
+                // A team that has played holds season history in the standings,
+                // so it stays even once the last member leaves.
+                const hasSeasonHistory = teamIdsWithResults.has(team.id);
+                const isDeletable = team.members.length === 0 && !hasSeasonHistory;
 
                 return (
                   <article key={team.id} className="rounded-lg border border-line bg-white p-4">
@@ -90,7 +95,7 @@ export default async function OrganizationTeamsPage({
                             </button>
                           </form>
                         )}
-                        {isEmptyTeam ? (
+                        {isDeletable ? (
                           <form action={deleteTeam}>
                             <input type="hidden" name="organizationSlug" value={organizationSlug} />
                             <input type="hidden" name="teamId" value={team.id} />
@@ -101,6 +106,10 @@ export default async function OrganizationTeamsPage({
                         ) : null}
                       </div>
                     </div>
+
+                    {team.members.length === 0 && hasSeasonHistory ? (
+                      <p className="mt-3 text-sm text-muted">Kept for its recorded season results.</p>
+                    ) : null}
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       {team.members.length === 0 ? (

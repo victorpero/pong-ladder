@@ -12,6 +12,18 @@
  * as neither a team win nor a team loss.
  */
 
+import { type Prisma } from "@prisma/client";
+
+/**
+ * Matches that recorded a team as a participant. A team named by any snapshot is
+ * part of the season's competitive history and can no longer be deleted.
+ */
+export function recordedTeamResultWhere(teamId: string): Prisma.MatchWhereInput {
+  return {
+    OR: [{ winnerTeamId: teamId }, { loserTeamId: teamId }]
+  };
+}
+
 export type TeamStandingTeam = {
   id: string;
   name: string;
