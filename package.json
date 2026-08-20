@@ -12,6 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "email:preview": "tsx scripts/preview-emails.ts",
+    "icons:generate": "tsx scripts/generate-app-icons.ts",
     "release:version": "tsx scripts/release.ts version",
     "release:notes": "tsx scripts/release.ts notes",
     "release:sync": "tsx scripts/release.ts sync",

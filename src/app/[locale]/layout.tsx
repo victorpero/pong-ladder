@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { AppChrome } from "@/components/AppChrome";
+import { APP_THEME_COLOR } from "@/lib/app-metadata";
 import { getAppBaseUrl } from "@/lib/app-url";
 import {
   ACTIVE_PATH_HEADER,
@@ -27,6 +28,13 @@ export function generateMetadata({ params }: { params: { locale: string } }): Me
   return {
     title: dictionary.metadata.title,
     description: dictionary.metadata.description,
+    applicationName: dictionary.metadata.title,
+    // Names the icon on the iOS home screen and opts into the standalone shell.
+    appleWebApp: {
+      capable: true,
+      title: dictionary.metadata.title,
+      statusBarStyle: "default"
+    },
     // Each language version points at itself and at every sibling, per multilingual search guidance.
     alternates: unprefixedPath
       ? {
@@ -38,6 +46,10 @@ export function generateMetadata({ params }: { params: { locale: string } }): Me
       : undefined
   };
 }
+
+export const viewport: Viewport = {
+  themeColor: APP_THEME_COLOR
+};
 
 export default function LocaleLayout({
   children,
