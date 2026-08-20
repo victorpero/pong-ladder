@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormState, useFormStatus } from "react-dom";
+import { useDictionary } from "@/lib/i18n/locale-context";
 import {
   rotateOrganizationAccessCode,
   type OrganizationPolicyState
@@ -28,11 +29,16 @@ export function InviteAdminControls({
 }
 
 function RotateButton({ hasExistingCode }: { hasExistingCode: boolean }) {
+  const dictionary = useDictionary();
   const { pending } = useFormStatus();
 
   return (
     <button className="button" type="submit" disabled={pending}>
-      {pending ? "Generating..." : hasExistingCode ? "Rotate code" : "Generate new code"}
+      {pending
+        ? dictionary.invite.generating
+        : hasExistingCode
+          ? dictionary.invite.rotateCode
+          : dictionary.invite.generateCode}
     </button>
   );
 }

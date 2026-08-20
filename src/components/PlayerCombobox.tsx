@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useDictionary } from "@/lib/i18n/locale-context";
 
 export type PlayerOption = {
   id: string;
@@ -21,6 +22,7 @@ export function PlayerCombobox({
   defaultPlayerId?: string;
   disabled?: boolean;
 }) {
+  const dictionary = useDictionary();
   const listId = useId();
   const [query, setQuery] = useState(() => players.find((player) => player.id === defaultPlayerId)?.label ?? "");
   const selected = useMemo(
@@ -36,7 +38,7 @@ export function PlayerCombobox({
         list={listId}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Start typing a player name"
+        placeholder={dictionary.playerCombobox.placeholder}
         autoComplete="off"
         disabled={disabled}
         required
@@ -49,7 +51,7 @@ export function PlayerCombobox({
           </option>
         ))}
       </datalist>
-      <span className="text-xs text-muted">Choose a player from the suggestions.</span>
+      <span className="text-xs text-muted">{dictionary.playerCombobox.help}</span>
     </label>
   );
 }

@@ -5,13 +5,15 @@ import {
   MembershipStatus,
   Prisma
 } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAuthenticatedUser, verifyEmailPath } from "@/lib/authz";
 import { hashOrganizationAccessCode, normalizeOrganizationAccessCode } from "@/lib/organization-access-code";
 import { evaluateOrganizationJoinPolicy } from "@/lib/organization-join-policy";
+import { t } from "@/lib/i18n/format";
+import { getRequestDictionary, getRequestLocale } from "@/lib/i18n/server";
 import { organizationsPath } from "@/lib/organization-paths";
+import { revalidateOrganizationSelection } from "@/lib/revalidation";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -35,10 +37,12 @@ export type OrganizationJoinState = {
 const organizationIdSchema = z.string().min(1).max(100);
 
 async function requireVerifiedJoinUser() {
-  const sessionUser = await requireAuthenticatedUser(organizationsPath);
+  const locale = getRequestLocale();
+  const selectionPath = organizationsPath(locale);
+  const sessionUser = await requireAuthenticatedUser(selectionPath);
 
   if (!sessionUser.user.emailVerifiedAt) {
-    redirect(`${verifyEmailPath}?next=${encodeURIComponent(organizationsPath)}`);
+    redirect(`${verifyEmailPath(locale)}?next=${encodeURIComponent(selectionPath)}`);
   }
 
   return sessionUser;
@@ -56,7 +60,10 @@ export async function joinOrganizationByPolicy(
   });
 
   if (!organization) {
-    return { outcome: "access_code_required", message: "That organization is not available." };
+    return {
+      outcome: "access_code_required",
+      message: getRequestDictionary().actions.join.organizationUnavailable
+    };
   }
 
   const decision = evaluateOrganizationJoinPolicy({
@@ -76,7 +83,7 @@ export async function joinOrganizationByPolicy(
     joinMethod: decision.joinMethod
   });
 
-  revalidatePath(organizationsPath);
+  revalidateOrganizationSelection();
   return membershipState(result, organization.name);
 }
 
@@ -91,7 +98,7 @@ export async function joinOrganizationWithAccessCode(
     consumeRateLimit(getClientRateLimitKey("organization-code:client"), 20, 15 * 60 * 1000);
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return { outcome: "rate_limited", message: error.message };
+      return { outcome: "rate_limited", message: getRequestDictionary().actions.rateLimited };
     }
 
     throw error;
@@ -100,7 +107,7 @@ export async function joinOrganizationWithAccessCode(
   const normalizedCode = normalizeOrganizationAccessCode(formData.get("accessCode")?.toString() ?? "");
 
   if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/.test(normalizedCode)) {
-    return invalidCodeState;
+    return invalidCodeState();
   }
 
   const accessCodeHash = hashOrganizationAccessCode(normalizedCode);
@@ -113,7 +120,7 @@ export async function joinOrganizationWithAccessCode(
   });
 
   if (!organization) {
-    return invalidCodeState;
+    return invalidCodeState();
   }
 
   const result = await createOrUpdateMembership({
@@ -123,7 +130,7 @@ export async function joinOrganizationWithAccessCode(
     joinMethod: MembershipJoinMethod.ACCESS_CODE
   });
 
-  revalidatePath(organizationsPath);
+  revalidateOrganizationSelection();
   return membershipState(result, organization.name, organization.slug);
 }
 
@@ -208,37 +215,43 @@ function membershipState(
   organizationName: string,
   organizationSlug?: string
 ): OrganizationJoinState {
+  const messages = getRequestDictionary().actions.join;
+  const organization = { organization: organizationName };
+
   switch (result) {
     case "ALREADY_MEMBER":
       return {
         outcome: "already_member",
-        message: `You already belong to ${organizationName}.`,
+        message: t(messages.alreadyMember, organization),
         organizationSlug
       };
     case MembershipStatus.ACTIVE:
-      return { outcome: "active", message: `${organizationName} is ready to open.`, organizationSlug };
+      return { outcome: "active", message: t(messages.ready, organization), organizationSlug };
     case MembershipStatus.PENDING:
-      return { outcome: "pending", message: `Your request to join ${organizationName} is awaiting approval.` };
+      return { outcome: "pending", message: t(messages.pending, organization) };
     case MembershipStatus.REJECTED:
-      return { outcome: "rejected", message: `Your request to join ${organizationName} was rejected.` };
+      return { outcome: "rejected", message: t(messages.rejected, organization) };
     case MembershipStatus.SUSPENDED:
-      return { outcome: "suspended", message: `Your access to ${organizationName} is suspended.` };
+      return { outcome: "suspended", message: t(messages.suspended, organization) };
     case MembershipStatus.REMOVED:
-      return { outcome: "removed", message: `Your membership in ${organizationName} was removed.` };
+      return { outcome: "removed", message: t(messages.removed, organization) };
   }
 }
 
 function policyDeniedState(outcome: "invitation_required" | "domain_not_allowed" | "access_code_required") {
+  const join = getRequestDictionary().actions.join;
   const messages = {
-    invitation_required: "A valid invitation is required to join this organization.",
-    domain_not_allowed: "Your verified email domain is not eligible for this organization.",
-    access_code_required: "Enter the organization's access code to join."
+    invitation_required: join.invitationRequired,
+    domain_not_allowed: join.domainNotAllowed,
+    access_code_required: join.accessCodeRequired
   };
 
   return { outcome, message: messages[outcome] };
 }
 
-const invalidCodeState: OrganizationJoinState = {
-  outcome: "invalid_code",
-  message: "That organization code is invalid or unavailable."
-};
+function invalidCodeState(): OrganizationJoinState {
+  return {
+    outcome: "invalid_code",
+    message: getRequestDictionary().actions.join.invalidCode
+  };
+}

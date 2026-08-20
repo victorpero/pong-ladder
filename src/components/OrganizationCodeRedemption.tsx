@@ -8,11 +8,13 @@ import {
   prepareOrganizationCodeInvitation,
   type PrepareOrganizationCodeInvitationState
 } from "@/lib/organization-code-invitation-actions";
+import { t } from "@/lib/i18n/format";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import { joinOrganizationWithAccessCode, type OrganizationJoinState } from "@/lib/organization-join-actions";
-import { organizationsPath } from "@/lib/organization-paths";
+import { appPath, loginPath, organizationsPath } from "@/lib/organization-paths";
 
 const storedCodeKey = "pong-ladder:organization-invitation-code";
-const joinPath = "/join/code";
+const joinRoute = "/join/code";
 type DeferredPreparation = Exclude<PrepareOrganizationCodeInvitationState, { outcome: "ready" }>;
 
 type FlowState =
@@ -22,6 +24,9 @@ type FlowState =
 
 export function OrganizationCodeRedemption() {
   const router = useRouter();
+  const locale = useLocale();
+  const dictionary = useDictionary();
+  const joinPath = appPath(locale, joinRoute);
   const started = useRef(false);
   const [pending, startTransition] = useTransition();
   const [state, setState] = useState<FlowState>({ phase: "preparing" });
@@ -65,49 +70,60 @@ export function OrganizationCodeRedemption() {
         redemption.organizationSlug
       ) {
         window.sessionStorage.removeItem(storedCodeKey);
-        router.replace(`${organizationsPath}?joined=${encodeURIComponent(redemption.organizationSlug)}`);
+        router.replace(`${organizationsPath(locale)}?joined=${encodeURIComponent(redemption.organizationSlug)}`);
         return;
       }
 
       setState({ phase: "failed", result: redemption, organizationName: preparation.organizationName });
     });
-  }, [router]);
+  }, [joinPath, locale, router]);
 
   if (state.phase === "preparing") {
     return (
       <div className="rounded-lg bg-court-50 p-4">
-        <p className="font-black text-court-700">{pending ? "Preparing invitation..." : "Opening invitation..."}</p>
-        <p className="mt-1 text-sm text-muted">Your membership will be activated automatically.</p>
+        <p className="font-black text-court-700">
+          {pending ? dictionary.invitation.preparing : dictionary.invitation.opening}
+        </p>
+        <p className="mt-1 text-sm text-muted">{dictionary.invitation.automaticActivation}</p>
       </div>
     );
   }
 
   if (state.phase === "prepared") {
-    return <PreparedInvitation preparation={state.preparation} />;
+    return <PreparedInvitation preparation={state.preparation} joinPath={joinPath} />;
   }
 
   return (
     <div>
       <InvitationHeading organizationName={state.organizationName} />
       <div className="mt-6 rounded-lg bg-red-50 p-4 text-left">
-      <p className="font-black text-danger">Invitation could not be accepted</p>
+      <p className="font-black text-danger">{dictionary.invitation.failedTitle}</p>
         <p className="mt-1 text-sm leading-6 text-muted">
-          {state.result.message ?? "This invitation is unavailable."}
+          {state.result.message ?? dictionary.invitation.codeUnavailable}
         </p>
       </div>
     </div>
   );
 }
 
-function PreparedInvitation({ preparation }: { preparation: DeferredPreparation }) {
+function PreparedInvitation({
+  preparation,
+  joinPath
+}: {
+  preparation: DeferredPreparation;
+  joinPath: string;
+}) {
+  const locale = useLocale();
+  const dictionary = useDictionary();
+
   if (preparation.outcome === "invalid") {
     return (
       <div>
-        <p className="label">Organization invitation</p>
-        <h1 className="mt-2 text-3xl font-black">Invitation unavailable</h1>
-        <p className="mt-3 text-sm leading-6 text-muted">This organization invitation is invalid.</p>
-        <Link className="button-secondary mt-6 inline-flex" href={organizationsPath}>
-          Back to organizations
+        <p className="label">{dictionary.invitation.label}</p>
+        <h1 className="mt-2 text-3xl font-black">{dictionary.invitation.codeInvalidHeading}</h1>
+        <p className="mt-3 text-sm leading-6 text-muted">{dictionary.invitation.codeInvalidBody}</p>
+        <Link className="button-secondary mt-6 inline-flex" href={organizationsPath(locale)}>
+          {dictionary.common.backToOrganizations}
         </Link>
       </div>
     );
@@ -118,20 +134,21 @@ function PreparedInvitation({ preparation }: { preparation: DeferredPreparation 
       <InvitationHeading organizationName={preparation.organizationName} />
       {preparation.outcome === "authentication_required" ? (
         <>
-          <p className="mt-5 text-sm leading-6 text-muted">
-            Log in or create an account to join this organization. The invitation remains active through authentication.
-          </p>
-          <Link className="button mt-6 inline-flex" href={`/login?next=${encodeURIComponent(joinPath)}`}>
-            Continue to login
+          <p className="mt-5 text-sm leading-6 text-muted">{dictionary.invitation.codeLoginPrompt}</p>
+          <Link className="button mt-6 inline-flex" href={loginPath(locale, joinPath)}>
+            {dictionary.invitation.continueToLogin}
           </Link>
         </>
       ) : (
         <>
           <p className="mt-5 text-sm leading-6 text-muted">
-            Verify {preparation.email} before joining this organization.
+            {t(dictionary.invitation.codeVerifyPrompt, { email: preparation.email })}
           </p>
-          <Link className="button mt-6 inline-flex" href={`/verify-email?next=${encodeURIComponent(joinPath)}`}>
-            Verify email
+          <Link
+            className="button mt-6 inline-flex"
+            href={`${appPath(locale, "/verify-email")}?next=${encodeURIComponent(joinPath)}`}
+          >
+            {dictionary.invitation.verifyEmail}
           </Link>
         </>
       )}
@@ -140,15 +157,19 @@ function PreparedInvitation({ preparation }: { preparation: DeferredPreparation 
 }
 
 function InvitationHeading({ organizationName }: { organizationName: string }) {
+  const dictionary = useDictionary();
+
   return (
     <>
       <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-court-50 text-court-700">
         <Building2 aria-hidden="true" size={24} />
       </span>
-      <p className="label mt-5">Organization invitation</p>
-      <h1 className="mt-2 text-3xl font-black">Join {organizationName}</h1>
+      <p className="label mt-5">{dictionary.invitation.label}</p>
+      <h1 className="mt-2 text-3xl font-black">
+        {t(dictionary.invitation.joinHeading, { organization: organizationName })}
+      </h1>
       <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-muted">
-        <ShieldCheck aria-hidden="true" size={17} /> Verified accounts receive active membership
+        <ShieldCheck aria-hidden="true" size={17} /> {dictionary.invitation.verifiedNote}
       </p>
     </>
   );

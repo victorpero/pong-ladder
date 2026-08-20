@@ -13,7 +13,10 @@ import {
 } from "@/lib/challenge-rules";
 import { getPublicPlayerName, getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
-import { compactDate } from "@/lib/format";
+import { compactDate, formatNumber } from "@/lib/format";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { t } from "@/lib/i18n/format";
 import { sortByRegistration } from "@/lib/match-feed";
 import { PlayerStats } from "@/components/PlayerStats";
 import { buildHeadToHead, filterSeasonMatches, selectRival, summarizeRecord } from "@/lib/player-stats";
@@ -23,15 +26,18 @@ import { getTeamDisplayName } from "@/lib/team-display";
 import { organizationPath } from "@/lib/organization-paths";
 
 export default async function OrganizationPlayerPage({
+  locale,
   organizationSlug,
   playerId
 }: {
+  locale: Locale;
   organizationSlug: string;
   playerId: string;
 }) {
+  const dictionary = getDictionary(locale);
   const { session, organization } = await requireOrganizationUser(
     organizationSlug,
-    organizationPath(organizationSlug, "players", playerId)
+    organizationPath(locale, organizationSlug, "players", playerId)
   );
   const [rawUser, season] = await Promise.all([
     prisma.user.findFirst({
@@ -103,49 +109,57 @@ export default async function OrganizationPlayerPage({
   );
   const challengeOptions = availableChallengeTargets.map((item) => ({
     id: item.userId,
-    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.currentRank})`,
-    detail: `${item.points} pts`
+    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.effectivePosition})`,
+    detail: t(dictionary.matches.playerRankDetail, { rank: item.effectivePosition, points: item.points })
   }));
   const defaultChallengeTargetId = availableChallengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
 
   return (
     <main className="page-shell">
       <section className="mb-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr]">
-        <StatCard label="Rank" value={entry ? `#${entry.currentRank}` : "N/A"} />
-        <StatCard label="Points" value={entry?.points ?? 0} />
-        <StatCard label="Record" value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
+        <StatCard
+          label={dictionary.common.rank}
+          value={entry ? `#${entry.effectivePosition}` : dictionary.common.notAvailable}
+        />
+        <StatCard label={dictionary.common.points} value={formatNumber(entry?.points ?? 0, locale)} />
+        <StatCard label={dictionary.common.record} value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="section-band">
-          <p className="label">Player</p>
+          <p className="label">{dictionary.player.label}</p>
           <h1 className="mt-1 text-3xl font-black">{publicName}</h1>
           <p className="mt-1 text-sm text-muted">{getTeamDisplayName(user)}</p>
 
           <div className="mt-8">
             <PlayerStats
+              locale={locale}
               seasonLabel={seasonLabel}
               seasonRecord={seasonRecord}
               allTimeRecord={allTimeRecord}
               headToHead={headToHead}
               rival={rival}
-              emptyHeadToHeadBody="Head-to-head records appear once this player has played a match."
+              emptyHeadToHeadBody={dictionary.player.headToHeadEmptyBody}
             />
           </div>
 
-          <h2 className="mt-8 text-xl font-black">Match history</h2>
+          <h2 className="mt-8 text-xl font-black">{dictionary.player.matchHistoryHeading}</h2>
           <div className="mt-4 grid gap-3">
             {matches.length === 0 ? (
-              <EmptyState title="No matches yet" body="Register a match to build this player's history." />
+              <EmptyState title={dictionary.player.emptyMatchesTitle} body={dictionary.player.emptyMatchesBody} />
             ) : (
               matches.map((match) => (
-	                <div key={match.id} className="rounded-lg border border-line bg-white p-4">
-	                  <div className="flex flex-wrap items-center justify-between gap-3">
-	                    <p className="font-bold">
-	                      {publicNames.get(match.winnerId) ?? match.winner.username} beat{" "}
-	                      {publicNames.get(match.loserId) ?? match.loser.username} {match.winnerSets}-{match.loserSets}
-	                    </p>
-                    <p className="text-sm text-muted">{compactDate(match.playedAt)}</p>
+                <div key={match.id} className="rounded-lg border border-line bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-bold">
+                      {t(dictionary.player.beatSummary, {
+                        winner: publicNames.get(match.winnerId) ?? match.winner.username,
+                        loser: publicNames.get(match.loserId) ?? match.loser.username,
+                        winnerSets: match.winnerSets,
+                        loserSets: match.loserSets
+                      })}
+                    </p>
+                    <p className="text-sm text-muted">{compactDate(match.playedAt, locale)}</p>
                   </div>
                   <p className="mt-2 text-sm text-muted">
                     {match.winnerPointsBefore} {"->"} {match.winnerPointsAfter} / {match.loserPointsBefore} {"->"}{" "}
@@ -159,34 +173,36 @@ export default async function OrganizationPlayerPage({
 
         <aside className="grid gap-4 self-start">
           <section className="section-band">
-            <h2 className="text-xl font-black">Challenge actions</h2>
+            <h2 className="text-xl font-black">{dictionary.player.challengeActionsHeading}</h2>
             {!session ? (
-              <p className="mt-3 text-sm text-muted">Log in before creating challenges.</p>
+              <p className="mt-3 text-sm text-muted">{dictionary.challenges.loginFirst}</p>
             ) : !season || !currentPlayer ? (
-              <p className="mt-3 text-sm text-muted">Join the active season before creating challenges.</p>
+              <p className="mt-3 text-sm text-muted">{dictionary.challenges.joinSeasonFirst}</p>
             ) : (
               <form action={createChallenge} className="mt-4 grid gap-3">
                 <input type="hidden" name="organizationSlug" value={organizationSlug} />
                 <input type="hidden" name="seasonId" value={season.id} />
                 <label className="grid gap-1">
-                  <span className="label">Challenger</span>
+                  <span className="label">{dictionary.challenges.challengerLabel}</span>
                   <input className="field" value={currentPlayerName} readOnly />
                 </label>
                 <PlayerCombobox
                   name="challengedId"
-                  label="Challenge"
+                  label={dictionary.player.challengeLabel}
                   players={challengeOptions}
                   defaultPlayerId={defaultChallengeTargetId}
                   disabled={challengeOptions.length === 0}
                 />
                 <button className="button" type="submit" disabled={challengeOptions.length === 0}>
-                  Create challenge
+                  {dictionary.challenges.createButton}
                 </button>
                 {blockedActiveTargets.length > 0 ? (
                   <p className="rounded-md border border-line bg-slate-50 p-3 text-sm font-semibold text-muted">
-                    You already have an active challenge with{" "}
-                    {blockedActiveTargets.map((item) => publicNames.get(item.userId) ?? item.user.username).join(", ")}.
-                    Finish it before starting another.
+                    {t(dictionary.challenges.blockedTargets, {
+                      players: blockedActiveTargets
+                        .map((item) => publicNames.get(item.userId) ?? item.user.username)
+                        .join(", ")
+                    })}
                   </p>
                 ) : null}
               </form>
@@ -194,10 +210,10 @@ export default async function OrganizationPlayerPage({
           </section>
 
           <section className="section-band">
-            <h2 className="text-xl font-black">Challenge history</h2>
+            <h2 className="text-xl font-black">{dictionary.player.challengeHistoryHeading}</h2>
             <div className="mt-4 grid gap-3">
               {challenges.length === 0 ? (
-                <p className="text-sm text-muted">No challenge history yet.</p>
+                <p className="text-sm text-muted">{dictionary.player.noChallengeHistory}</p>
               ) : (
                 challenges.map((challenge) => (
                   <div key={challenge.id} className="rounded-lg border border-line bg-white p-3">
@@ -206,7 +222,7 @@ export default async function OrganizationPlayerPage({
                         {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} {"->"}{" "}
                         {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                       </p>
-                      <StatusBadge status={challenge.status} />
+                      <StatusBadge status={challenge.status} locale={locale} />
                     </div>
                   </div>
                 ))

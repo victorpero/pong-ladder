@@ -1,3 +1,5 @@
+import { UserFacingError } from "@/lib/user-facing-error";
+
 export type MatchSets = {
   winnerSets: 3;
   loserSets: 0 | 1 | 2;
@@ -18,7 +20,7 @@ export type ScoreResult = {
 
 export function validateBestOfFiveResult(winnerSets: number, loserSets: number): asserts winnerSets is 3 {
   if (winnerSets !== 3 || ![0, 1, 2].includes(loserSets)) {
-    throw new Error("Match results must be best-of-five scores: 3-0, 3-1, or 3-2.");
+    throw new UserFacingError("Match results must be best-of-five scores: 3-0, 3-1, or 3-2.");
   }
 }
 

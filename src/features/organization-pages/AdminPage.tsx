@@ -1,4 +1,11 @@
-import { ChallengeStatus, MembershipRole, MembershipStatus, OrganizationJoinPolicy } from "@prisma/client";
+import {
+  ChallengeStatus,
+  MembershipAuditAction,
+  MembershipJoinMethod,
+  MembershipRole,
+  MembershipStatus,
+  OrganizationJoinPolicy
+} from "@prisma/client";
 import { AddOrganizationMemberForm } from "@/components/AddOrganizationMemberForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -10,11 +17,14 @@ import {
   adminDeleteMatch,
   adminRemoveSeasonPlayer
 } from "@/lib/admin-actions";
-import { AddSeasonPlayerForm } from "@/app/admin/AddSeasonPlayerForm";
+import { AddSeasonPlayerForm } from "@/app/[locale]/admin/AddSeasonPlayerForm";
 import { requireOrganizationAdmin } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
-import { compactDate } from "@/lib/format";
+import { compactDate, formatNumber } from "@/lib/format";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary, type Dictionary } from "@/lib/i18n/dictionary";
+import { plural, t } from "@/lib/i18n/format";
 import { matchFeedOrderBy } from "@/lib/match-feed";
 import {
   approveOrganizationMembership,
@@ -32,10 +42,17 @@ import { selectSeasonJoinCandidates } from "@/lib/season-membership";
 import { getTeamDisplayName } from "@/lib/team-display";
 import { organizationPath } from "@/lib/organization-paths";
 
-export default async function OrganizationAdminPage({ organizationSlug }: { organizationSlug: string }) {
+export default async function OrganizationAdminPage({
+  locale,
+  organizationSlug
+}: {
+  locale: Locale;
+  organizationSlug: string;
+}) {
+  const dictionary = getDictionary(locale);
   const { organization, membership } = await requireOrganizationAdmin(
     organizationSlug,
-    organizationPath(organizationSlug, "admin")
+    organizationPath(locale, organizationSlug, "admin")
   );
   const season = await getActiveSeason(organization.id);
   const [
@@ -136,13 +153,16 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
     <main className="page-shell">
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
         <div className="section-band">
-          <p className="label">Admin</p>
-          <h1 className="mt-1 text-3xl font-black">Root controls</h1>
-          <p className="mt-2 text-sm text-muted">Season {seasonLabel}</p>
+          <p className="label">{dictionary.admin.label}</p>
+          <h1 className="mt-1 text-3xl font-black">{dictionary.admin.heading}</h1>
+          <p className="mt-2 text-sm text-muted">{t(dictionary.admin.seasonLine, { season: seasonLabel })}</p>
         </div>
-        <AdminStat label="Season players" value={ladder.length} />
-        <AdminStat label="Organization members" value={organizationMemberships.length} />
-        <AdminStat label="Matches" value={matches.length} />
+        <AdminStat label={dictionary.admin.seasonPlayers} value={formatNumber(ladder.length, locale)} />
+        <AdminStat
+          label={dictionary.admin.organizationMembers}
+          value={formatNumber(organizationMemberships.length, locale)}
+        />
+        <AdminStat label={dictionary.admin.matches} value={formatNumber(matches.length, locale)} />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -154,18 +174,19 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
             visibility={organization.visibility}
             joinPolicy={organization.joinPolicy}
             allowedEmailDomains={organization.allowedEmailDomains}
+            defaultLocale={organization.defaultLocale}
           />
         ) : null}
 
         {organization.joinPolicy === OrganizationJoinPolicy.ADMIN_APPROVAL ? (
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Approvals</p>
-            <h2 className="mt-1 text-2xl font-black">Pending accounts</h2>
+            <p className="label">{dictionary.admin.approvalsLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.pendingAccountsHeading}</h2>
           </div>
           <div className="grid gap-3">
             {pendingAccounts.length === 0 ? (
-              <EmptyState title="No pending accounts" body="New account requests will appear here for approval." />
+              <EmptyState title={dictionary.admin.pendingEmptyTitle} body={dictionary.admin.pendingEmptyBody} />
             ) : (
               pendingAccounts.map((user) => (
                 <article key={user.id} className="rounded-lg border border-line bg-white p-4">
@@ -174,7 +195,10 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                       <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
                       <p className="text-sm text-muted">{user.email}</p>
                       <p className="mt-1 text-sm font-semibold text-muted">
-                        {user.username} · requested {compactDate(user.requestedAt)}
+                        {t(dictionary.admin.requestedAt, {
+                          username: user.username,
+                          date: compactDate(user.requestedAt, locale)
+                        })}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
@@ -182,7 +206,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                         <input type="hidden" name="organizationSlug" value={organizationSlug} />
                         <input type="hidden" name="userId" value={user.id} />
                         <button className="button" type="submit">
-                          Approve
+                          {dictionary.admin.approve}
                         </button>
                       </form>
                       <form action={rejectOrganizationMembership}>
@@ -190,9 +214,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                         <input type="hidden" name="userId" value={user.id} />
                         <ConfirmSubmitButton
                           className="button-danger"
-                          confirmation="This will reject the pending organization membership."
+                          confirmation={dictionary.admin.declinePendingConfirmation}
                         >
-                          Decline
+                          {dictionary.admin.declinePending}
                         </ConfirmSubmitButton>
                       </form>
                     </div>
@@ -206,14 +230,12 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Organization membership</p>
-            <h2 className="mt-1 text-2xl font-black">Add an existing account</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Add a verified Pong Ladder account to this organization. Season membership remains a separate step.
-            </p>
+            <p className="label">{dictionary.admin.organizationMembershipLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.addExistingHeading}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">{dictionary.admin.addExistingBody}</p>
           </div>
           {organizationJoinCandidates.length === 0 ? (
-            <EmptyState title="No accounts available" body="Every verified account is already linked to this organization." />
+            <EmptyState title={dictionary.admin.noAccountsTitle} body={dictionary.admin.noAccountsBody} />
           ) : (
             <AddOrganizationMemberForm organizationSlug={organizationSlug} users={organizationJoinCandidates} />
           )}
@@ -221,14 +243,14 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Season membership</p>
-            <h2 className="mt-1 text-2xl font-black">Add player to season</h2>
+            <p className="label">{dictionary.admin.seasonMembershipLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.addSeasonPlayerHeading}</h2>
             <p className="mt-2 text-sm text-muted">
-              Add an approved player to season {seasonLabel}. They start at the bottom of the ladder with 0 points.
+              {t(dictionary.admin.addSeasonPlayerBody, { season: seasonLabel })}
             </p>
           </div>
           {seasonJoinCandidates.length === 0 ? (
-            <EmptyState title="Everyone has joined" body="Every approved player is already in the active season." />
+            <EmptyState title={dictionary.admin.everyoneJoinedTitle} body={dictionary.admin.everyoneJoinedBody} />
           ) : (
             <AddSeasonPlayerForm
               seasonId={season.id}
@@ -240,22 +262,25 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Season membership</p>
-            <h2 className="mt-1 text-2xl font-black">Remove players from season</h2>
+            <p className="label">{dictionary.admin.seasonMembershipLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.removeSeasonPlayersHeading}</h2>
           </div>
           <div className="grid gap-3">
             {ladder.length === 0 ? (
-              <EmptyState title="No season players" body="No players have joined the active season." />
+              <EmptyState title={dictionary.admin.noSeasonPlayersTitle} body={dictionary.admin.noSeasonPlayersBody} />
             ) : (
               ladder.map((entry) => (
                 <article key={entry.id} className="rounded-lg border border-line bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-black">
-                        #{entry.currentRank} {publicNames.get(entry.userId) ?? entry.user.username}
+                        #{entry.effectivePosition} {publicNames.get(entry.userId) ?? entry.user.username}
                       </p>
                       <p className="text-sm text-muted">
-                        {entry.points} pts · {getTeamDisplayName(entry.user)}
+                        {t(dictionary.admin.seasonPlayerDetail, {
+                          points: entry.points,
+                          team: getTeamDisplayName(entry.user)
+                        })}
                       </p>
                     </div>
                     <form action={adminRemoveSeasonPlayer}>
@@ -263,9 +288,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                       <input type="hidden" name="seasonPlayerId" value={entry.id} />
                       <ConfirmSubmitButton
                         className="button-danger"
-                        confirmation="This will remove the player from this season and delete their season matches and challenges."
+                        confirmation={dictionary.admin.removeSeasonPlayerConfirmation}
                       >
-                        Remove
+                        {dictionary.common.remove}
                       </ConfirmSubmitButton>
                     </form>
                   </div>
@@ -277,12 +302,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Organization membership</p>
-            <h2 className="mt-1 text-2xl font-black">Member administration</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Membership access is independent of season participation. Suspending or removing access cancels open
-              challenges but preserves completed matches and historical standings.
-            </p>
+            <p className="label">{dictionary.admin.organizationMembershipLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.memberAdministrationHeading}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">{dictionary.admin.memberAdministrationBody}</p>
           </div>
           <div className="grid gap-3">
             {organizationMemberships.map((organizationMembership) => {
@@ -303,18 +325,24 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-black">{publicNames.get(user.id) ?? user.username}</p>
                         <span className={membershipStatusClassName(organizationMembership.status)}>
-                          {membershipStatusLabel(organizationMembership.status)}
+                          {dictionary.admin.membershipStatus[organizationMembership.status]}
                         </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black capitalize text-muted">
-                          {organizationMembership.role.toLowerCase()}
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-muted">
+                          {dictionary.admin.membershipRole[organizationMembership.role]}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-muted">
-                        {user.email} · joined via {joinMethodLabel(organizationMembership.joinMethod)}
+                        {t(dictionary.admin.joinedVia, {
+                          email: user.email,
+                          method: joinMethodLabel(dictionary, organizationMembership.joinMethod)
+                        })}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-muted">
-                        {user.username} · {getTeamDisplayName({ ...user, team: organizationMembership.team })} ·{" "}
-                        {openChallengeCount} open challenge{openChallengeCount === 1 ? "" : "s"}
+                        {t(dictionary.admin.memberDetail, {
+                          username: user.username,
+                          team: getTeamDisplayName({ ...user, team: organizationMembership.team }),
+                          challenges: plural(openChallengeCount, dictionary.admin.openChallengeCount)
+                        })}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
@@ -325,10 +353,10 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                             <input type="hidden" name="userId" value={user.id} />
                             <ConfirmSubmitButton
                               className="button-secondary"
-                              confirmation="This will remove all pending or accepted challenges involving this player."
+                              confirmation={dictionary.admin.cancelOpenChallengesConfirmation}
                               disabled={openChallengeCount === 0}
                             >
-                              Cancel open challenges
+                              {dictionary.admin.cancelOpenChallenges}
                             </ConfirmSubmitButton>
                           </form>
                           <form action={suspendOrganizationMembership}>
@@ -336,9 +364,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                             <input type="hidden" name="userId" value={user.id} />
                             <ConfirmSubmitButton
                               className="button-secondary"
-                              confirmation="This suspends organization access and cancels open challenges. Completed matches and season history are preserved."
+                              confirmation={dictionary.admin.suspendConfirmation}
                             >
-                              Suspend
+                              {dictionary.admin.suspend}
                             </ConfirmSubmitButton>
                           </form>
                           <form action={removeOrganizationMembership}>
@@ -346,9 +374,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                             <input type="hidden" name="userId" value={user.id} />
                             <ConfirmSubmitButton
                               className="button-danger"
-                              confirmation="This removes organization access and cancels open challenges. Completed matches and season history are preserved."
+                              confirmation={dictionary.admin.removeMemberConfirmation}
                             >
-                              Remove
+                              {dictionary.admin.removeMember}
                             </ConfirmSubmitButton>
                           </form>
                         </>
@@ -362,9 +390,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                           <input type="hidden" name="userId" value={user.id} />
                           <ConfirmSubmitButton
                             className="button"
-                            confirmation="This restores active organization access. It does not add the player to the current season."
+                            confirmation={dictionary.admin.reactivateConfirmation}
                           >
-                            Reactivate
+                            {dictionary.admin.reactivate}
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -385,11 +413,13 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                             className="button-secondary"
                             confirmation={
                               organizationMembership.role === MembershipRole.ADMIN
-                                ? "This revokes organization administrator access."
-                                : "This grants organization administrator access."
+                                ? dictionary.admin.revokeAdminConfirmation
+                                : dictionary.admin.grantAdminConfirmation
                             }
                           >
-                            {organizationMembership.role === MembershipRole.ADMIN ? "Make player" : "Make admin"}
+                            {organizationMembership.role === MembershipRole.ADMIN
+                              ? dictionary.admin.makePlayer
+                              : dictionary.admin.makeAdmin}
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -399,9 +429,9 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                           <input type="hidden" name="userId" value={user.id} />
                           <ConfirmSubmitButton
                             className="button-danger"
-                            confirmation="This member becomes the organization owner and your role changes to administrator."
+                            confirmation={dictionary.admin.transferOwnershipConfirmation}
                           >
-                            Transfer ownership
+                            {dictionary.admin.transferOwnership}
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -415,20 +445,23 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Audit</p>
-            <h2 className="mt-1 text-2xl font-black">Membership activity</h2>
+            <p className="label">{dictionary.admin.auditLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.auditHeading}</h2>
           </div>
           <div className="grid gap-3">
             {auditEvents.length === 0 ? (
-              <EmptyState title="No membership changes" body="Administrative membership changes will appear here." />
+              <EmptyState title={dictionary.admin.auditEmptyTitle} body={dictionary.admin.auditEmptyBody} />
             ) : (
               auditEvents.map((event) => (
                 <article key={event.id} className="rounded-lg border border-line bg-white p-4">
                   <p className="font-black">
-                    {event.subjectUser.username} · {auditActionLabel(event.action)}
+                    {event.subjectUser.username} · {auditActionLabel(dictionary, event.action)}
                   </p>
                   <p className="mt-1 text-sm text-muted">
-                    by {event.actorUser?.username ?? "system"} · {compactDate(event.createdAt)}
+                    {t(dictionary.admin.auditActor, {
+                      actor: event.actorUser?.username ?? dictionary.admin.auditSystemActor,
+                      date: compactDate(event.createdAt, locale)
+                    })}
                   </p>
                 </article>
               ))
@@ -438,12 +471,12 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Matches</p>
-            <h2 className="mt-1 text-2xl font-black">Delete match results</h2>
+            <p className="label">{dictionary.admin.matchesLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.deleteMatchesHeading}</h2>
           </div>
           <div className="grid gap-3">
             {matches.length === 0 ? (
-              <EmptyState title="No matches" body="There are no active-season matches to remove." />
+              <EmptyState title={dictionary.admin.noMatchesTitle} body={dictionary.admin.noMatchesBody} />
             ) : (
               matches.map((match) => (
                 <article key={match.id} className="rounded-lg border border-line bg-white p-4">
@@ -454,15 +487,18 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                         {publicNames.get(match.loserId) ?? match.loser.username}
                       </p>
                       <p className="text-sm text-muted">
-                        {compactDate(match.playedAt)}
-                        {match.challenge ? " · linked challenge" : ""}
+                        {compactDate(match.playedAt, locale)}
+                        {match.challenge ? ` · ${dictionary.admin.linkedChallenge}` : ""}
                       </p>
                     </div>
                     <form action={adminDeleteMatch}>
                       <input type="hidden" name="organizationSlug" value={organizationSlug} />
                       <input type="hidden" name="matchId" value={match.id} />
-                      <ConfirmSubmitButton className="button-danger" confirmation="This will delete this match result.">
-                        Delete
+                      <ConfirmSubmitButton
+                        className="button-danger"
+                        confirmation={dictionary.admin.deleteMatchConfirmation}
+                      >
+                        {dictionary.common.delete}
                       </ConfirmSubmitButton>
                     </form>
                   </div>
@@ -474,33 +510,34 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
 
         <section className="section-band">
           <div className="mb-4">
-            <p className="label">Challenges</p>
-            <h2 className="mt-1 text-2xl font-black">Delete challenges</h2>
+            <p className="label">{dictionary.admin.challengesLabel}</p>
+            <h2 className="mt-1 text-2xl font-black">{dictionary.admin.deleteChallengesHeading}</h2>
           </div>
           <div className="grid gap-3">
             {challenges.length === 0 ? (
-              <EmptyState title="No challenges" body="There are no active-season challenges to remove." />
+              <EmptyState title={dictionary.admin.noChallengesTitle} body={dictionary.admin.noChallengesBody} />
             ) : (
               challenges.map((challenge) => (
                 <article key={challenge.id} className="rounded-lg border border-line bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-black">
-                        {publicNames.get(challenge.challengerId) ?? challenge.challenger.username} vs{" "}
+                        {publicNames.get(challenge.challengerId) ?? challenge.challenger.username}{" "}
+                        {dictionary.matches.versus}{" "}
                         {publicNames.get(challenge.challengedId) ?? challenge.challenged.username}
                       </p>
-                      <p className="mt-1 text-sm text-muted">{compactDate(challenge.createdAt)}</p>
+                      <p className="mt-1 text-sm text-muted">{compactDate(challenge.createdAt, locale)}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge status={challenge.status} />
+                      <StatusBadge status={challenge.status} locale={locale} />
                       <form action={adminDeleteChallenge}>
                         <input type="hidden" name="organizationSlug" value={organizationSlug} />
                         <input type="hidden" name="challengeId" value={challenge.id} />
                         <ConfirmSubmitButton
                           className="button-danger"
-                          confirmation="This will delete this challenge. If it has a linked match, that match result will also be deleted."
+                          confirmation={dictionary.admin.deleteChallengeConfirmation}
                         >
-                          Delete
+                          {dictionary.common.delete}
                         </ConfirmSubmitButton>
                       </form>
                     </div>
@@ -515,7 +552,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
   );
 }
 
-function AdminStat({ label, value }: { label: string; value: number }) {
+function AdminStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="section-band">
       <p className="stat-label">{label}</p>
@@ -539,21 +576,6 @@ function getChallengeCounts(challenges: Array<{ challengerId: string; challenged
   return counts;
 }
 
-function membershipStatusLabel(status: MembershipStatus) {
-  switch (status) {
-    case MembershipStatus.ACTIVE:
-      return "Active";
-    case MembershipStatus.PENDING:
-      return "Pending";
-    case MembershipStatus.SUSPENDED:
-      return "Suspended";
-    case MembershipStatus.REJECTED:
-      return "Rejected";
-    case MembershipStatus.REMOVED:
-      return "Removed";
-  }
-}
-
 function membershipStatusClassName(status: MembershipStatus) {
   const color =
     status === MembershipStatus.ACTIVE
@@ -565,10 +587,10 @@ function membershipStatusClassName(status: MembershipStatus) {
   return `rounded-full px-2.5 py-1 text-xs font-black ${color}`;
 }
 
-function joinMethodLabel(joinMethod: string) {
-  return joinMethod.toLowerCase().replaceAll("_", " ");
+function joinMethodLabel(dictionary: Dictionary, joinMethod: MembershipJoinMethod) {
+  return dictionary.admin.joinMethod[joinMethod];
 }
 
-function auditActionLabel(action: string) {
-  return action.toLowerCase().replaceAll("_", " ");
+function auditActionLabel(dictionary: Dictionary, action: MembershipAuditAction) {
+  return dictionary.admin.auditAction[action];
 }

@@ -43,6 +43,12 @@ const rateLimit = vi.hoisted(() => ({
   }
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
@@ -50,7 +56,7 @@ vi.mock("next/navigation", () => ({
   }
 }));
 vi.mock("@/lib/authz", () => ({
-  verifyEmailPath: "/verify-email",
+  verifyEmailPath: (locale: string) => `/${locale}/verify-email`,
   requireAuthenticatedUser: async () => ({
     session: { sub: state.user.id },
     user: state.user

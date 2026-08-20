@@ -91,6 +91,7 @@ model Organization {
   accessCodeCiphertext  String?
   accessCodeEnabled     Boolean                  @default(false)
   accessCodeUpdatedAt   DateTime?
+  defaultLocale         String                   @default("sv")
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   memberships           Membership[]
@@ -147,6 +148,7 @@ model User {
   passwordChangedAt              DateTime?
   isAdmin                        Boolean                  @default(false)
   isApproved                     Boolean                  @default(false)
+  locale                         String?
   createdAt                      DateTime                 @default(now())
   updatedAt                      DateTime                 @updatedAt
   seasonPlayers                  SeasonPlayer[]
@@ -379,6 +381,10 @@ model Match {
   loserPointsBefore  Int
   winnerPointsAfter  Int
   loserPointsAfter   Int
+  /// Team assignment of each player when the result was registered. Snapshots, not
+  /// references, so later team changes never reinterpret a historical result.
+  winnerTeamId       String?
+  loserTeamId        String?
   playedAt           DateTime   @default(now())
   challengeId        String?    @unique
   createdAt          DateTime   @default(now())
@@ -391,6 +397,8 @@ model Match {
   @@index([organizationId, seasonId, playedAt])
   @@index([winnerId])
   @@index([loserId])
+  @@index([seasonId, winnerTeamId])
+  @@index([seasonId, loserTeamId])
 }
 
 model Challenge {
@@ -404,6 +412,7 @@ model Challenge {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   completedAt    DateTime?
+  notifiedAt     DateTime?
   season         Season          @relation(fields: [seasonId, organizationId], references: [id, organizationId], onDelete: Cascade)
   challenger     User            @relation("Challenger", fields: [challengerId], references: [id])
   challenged     User            @relation("Challenged", fields: [challengedId], references: [id])

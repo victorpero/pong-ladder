@@ -4,6 +4,8 @@
  * challenges never reach these calculations.
  */
 
+import type { Locale } from "@/lib/i18n/config";
+
 export type StatMatch = {
   seasonId: string;
   winnerId: string;
@@ -160,8 +162,8 @@ export function getRival(matches: StatMatch[], playerId: string, opponentNames: 
   return selectRival(buildHeadToHead(matches, playerId, opponentNames));
 }
 
-export function formatWinRate(winRate: number) {
-  return `${Math.round(winRate * 100)}%`;
+export function formatWinRate(winRate: number, locale: Locale) {
+  return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(winRate);
 }
 
 function buildRecord(wins: number, losses: number): PlayerRecord {

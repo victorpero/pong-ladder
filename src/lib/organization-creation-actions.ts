@@ -20,18 +20,21 @@ import {
 } from "@/lib/organization-creation-policy";
 import { generateOrganizationAccessCode, hashOrganizationAccessCode } from "@/lib/organization-access-code";
 import { encryptOrganizationCredential } from "@/lib/organization-credential";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/lib/i18n/config";
+import { getRequestDictionary, getRequestLocale } from "@/lib/i18n/server";
 import { normalizeEmailDomains } from "@/lib/organization-domain";
-import { organizationsPath } from "@/lib/organization-paths";
+import { newOrganizationPath, organizationsPath } from "@/lib/organization-paths";
 import { prisma } from "@/lib/prisma";
 
 export type CreateOrganizationState = { error?: string };
 
 const createSchema = z.object({
-  name: z.string().trim().min(2, "Enter an organization name.").max(100),
-  slug: z.string().trim().min(2, "Enter a URL slug.").max(60),
+  name: z.string().trim().min(2).max(100),
+  slug: z.string().trim().min(2).max(60),
   type: z.nativeEnum(OrganizationType),
   joinPolicy: z.nativeEnum(OrganizationJoinPolicy),
-  visibility: z.nativeEnum(OrganizationVisibility)
+  visibility: z.nativeEnum(OrganizationVisibility),
+  defaultLocale: z.enum(SUPPORTED_LOCALES).default(DEFAULT_LOCALE)
 });
 
 function value(formData: FormData, key: string) {
@@ -42,14 +45,16 @@ export async function createOrganization(
   _state: CreateOrganizationState,
   formData: FormData
 ): Promise<CreateOrganizationState> {
-  const { user } = await requireAuthenticatedUser("/organizations/new");
+  const locale = getRequestLocale();
+  const dictionary = getRequestDictionary();
+  const { user } = await requireAuthenticatedUser(newOrganizationPath(locale));
 
   if (!user.emailVerifiedAt) {
-    redirect(`${verifyEmailPath}?next=${encodeURIComponent("/organizations/new")}`);
+    redirect(`${verifyEmailPath(locale)}?next=${encodeURIComponent(newOrganizationPath(locale))}`);
   }
 
   if (!canCreateOrganizations(user.email)) {
-    return { error: "Organization creation is not enabled for this account." };
+    return { error: dictionary.actions.organizationCreation.notEnabled };
   }
 
   const parsed = createSchema.safeParse({
@@ -57,17 +62,18 @@ export async function createOrganization(
     slug: value(formData, "slug"),
     type: value(formData, "type"),
     joinPolicy: value(formData, "joinPolicy"),
-    visibility: value(formData, "visibility")
+    visibility: value(formData, "visibility"),
+    defaultLocale: value(formData, "defaultLocale") || DEFAULT_LOCALE
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Check the organization details." };
+    return { error: dictionary.actions.organizationCreation.checkDetails };
   }
 
   const slug = normalizeOrganizationSlug(parsed.data.slug);
 
   if (slug.length < 2 || slug.length > 60 || isReservedOrganizationSlug(slug)) {
-    return { error: "Choose a different URL slug." };
+    return { error: dictionary.actions.organizationCreation.chooseAnotherSlug };
   }
 
   const domains = normalizeEmailDomains(
@@ -77,7 +83,7 @@ export async function createOrganization(
   );
 
   if (parsed.data.joinPolicy === OrganizationJoinPolicy.EMAIL_DOMAIN && domains.length === 0) {
-    return { error: "Add at least one allowed email domain for this join policy." };
+    return { error: dictionary.actions.organizationCreation.domainRequired };
   }
 
   const accessCode = generateOrganizationAccessCode();
@@ -92,6 +98,7 @@ export async function createOrganization(
           type: parsed.data.type,
           joinPolicy: parsed.data.joinPolicy,
           visibility: parsed.data.visibility,
+          defaultLocale: parsed.data.defaultLocale,
           allowedEmailDomains: domains,
           accessCodeHash: hashOrganizationAccessCode(accessCode),
           accessCodeCiphertext: encryptOrganizationCredential(accessCode),
@@ -128,11 +135,11 @@ export async function createOrganization(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { error: "That URL slug is already in use." };
+      return { error: dictionary.actions.organizationCreation.slugInUse };
     }
 
     throw error;
   }
 
-  redirect(`${organizationsPath}?created=${encodeURIComponent(slug)}`);
+  redirect(`${organizationsPath(locale)}?created=${encodeURIComponent(slug)}`);
 }

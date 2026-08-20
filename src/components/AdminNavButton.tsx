@@ -3,6 +3,7 @@
 import { Wrench } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import { organizationPath } from "@/lib/organization-paths";
 
 type SessionState = {
@@ -10,6 +11,8 @@ type SessionState = {
 };
 
 export function AdminNavButton({ organizationSlug }: { organizationSlug: string }) {
+  const locale = useLocale();
+  const dictionary = useDictionary();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -50,9 +53,9 @@ export function AdminNavButton({ organizationSlug }: { organizationSlug: string 
 
   return (
     <Link
-      href={organizationPath(organizationSlug, "admin")}
-      aria-label="Admin"
-      title="Admin"
+      href={organizationPath(locale, organizationSlug, "admin")}
+      aria-label={dictionary.nav.admin}
+      title={dictionary.nav.admin}
       className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink transition hover:border-court-500 hover:text-court-700"
     >
       <Wrench aria-hidden="true" size={18} strokeWidth={2.2} />

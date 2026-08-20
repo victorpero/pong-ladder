@@ -24,7 +24,12 @@ vi.mock("@/lib/prisma", () => ({
   }
 }));
 
-vi.mock("next/headers", () => ({ headers: () => new Headers() }));
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
 const { requireActiveMembership, requireOrgAdmin, requireOrgOwner } = await import("@/lib/authz");

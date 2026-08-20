@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { activeChallengesForPlayerWhere } from "@/lib/challenge-rules";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
+import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
+import { buildTeamStandings, recordedTeamResultWhere } from "@/lib/team-standings";
 
 export async function getActiveSeason(organizationId: string) {
   return prisma.$transaction(async (tx) => {
@@ -38,64 +41,109 @@ export async function getLadder(seasonId: string) {
   const wins = new Map(matchCounts.map((item) => [item.winnerId, item._count.winnerId]));
   const losses = new Map(lossCounts.map((item) => [item.loserId, item._count.loserId]));
 
-  return players.map((player) => {
-    const winCount = wins.get(player.userId) ?? 0;
-    const lossCount = losses.get(player.userId) ?? 0;
+  // Rows stay in display order; the position rides along so the pages and the
+  // challenge validation read the same tied standings.
+  return withEffectivePositions(
+    players.map((player) => {
+      const winCount = wins.get(player.userId) ?? 0;
+      const lossCount = losses.get(player.userId) ?? 0;
 
-    return {
-      ...player,
-      user: { ...player.user, team: player.membership.team },
-      wins: winCount,
-      losses: lossCount,
-      matchesPlayed: winCount + lossCount
-    };
+      return {
+        ...player,
+        user: { ...player.user, team: player.membership.team },
+        wins: winCount,
+        losses: lossCount,
+        matchesPlayed: winCount + lossCount
+      };
+    })
+  );
+}
+
+/**
+ * Every challenge that still ties the viewer to someone this season, pending and
+ * accepted alike.
+ *
+ * One query serves both ladder features: the reportable cards filter it down to
+ * accepted challenges, and the row controls need the pending ones as well.
+ */
+export async function getActiveChallengesForPlayer(organizationId: string, seasonId: string, userId: string) {
+  return prisma.challenge.findMany({
+    where: { organizationId, ...activeChallengesForPlayerWhere(seasonId, userId) },
+    include: { challenger: true, challenged: true },
+    // Oldest acceptance first: the match that has been waiting longest is reported first.
+    orderBy: { updatedAt: "asc" }
   });
 }
 
+/**
+ * Team standings come straight from the season's match rows, so they never mix a
+ * player's live point total with the match history it was built from.
+ */
 export async function getTeamLadder(seasonId: string) {
-  const ladder = await getLadder(seasonId);
-  const teams = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      points: number;
-      wins: number;
-      losses: number;
-      matchesPlayed: number;
-      players: number;
-    }
-  >();
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { organizationId: true }
+  });
 
-  for (const entry of ladder) {
-    if (!entry.user.team) {
-      continue;
-    }
-
-    const current = teams.get(entry.user.team.id) ?? {
-      id: entry.user.team.id,
-      name: entry.user.team.name,
-      points: 0,
-      wins: 0,
-      losses: 0,
-      matchesPlayed: 0,
-      players: 0
-    };
-
-    current.points += entry.points;
-    current.wins += entry.wins;
-    current.losses += entry.losses;
-    current.matchesPlayed += entry.matchesPlayed;
-    current.players += 1;
-    teams.set(current.id, current);
+  if (!season) {
+    return [];
   }
 
-  return Array.from(teams.values())
-    .sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
-    .map((team, index) => ({
-      ...team,
-      currentRank: index + 1
-    }));
+  const [teams, players, matches] = await Promise.all([
+    prisma.team.findMany({
+      where: { organizationId: season.organizationId },
+      select: { id: true, name: true }
+    }),
+    prisma.seasonPlayer.findMany({
+      where: { seasonId, membership: { status: "ACTIVE" } },
+      select: { userId: true, membership: { select: { teamId: true } } }
+    }),
+    prisma.match.findMany({
+      where: { seasonId, organizationId: season.organizationId },
+      select: {
+        winnerTeamId: true,
+        loserTeamId: true,
+        winnerPointsBefore: true,
+        winnerPointsAfter: true,
+        loserPointsBefore: true,
+        loserPointsAfter: true
+      }
+    })
+  ]);
+
+  return withEffectivePositions(
+    buildTeamStandings({
+      teams,
+      players: players.map((player) => ({ userId: player.userId, teamId: player.membership.teamId })),
+      matches
+    })
+  );
+}
+
+/**
+ * Teams that already appear on a recorded result. They carry season history even
+ * with an empty roster, so the teams page keeps them out of reach of deletion.
+ */
+export async function getTeamIdsWithRecordedResults(organizationId: string) {
+  const matches = await prisma.match.findMany({
+    where: { organizationId },
+    select: { winnerTeamId: true, loserTeamId: true },
+    distinct: ["winnerTeamId", "loserTeamId"]
+  });
+
+  const teamIds = new Set<string>();
+
+  for (const match of matches) {
+    if (match.winnerTeamId) {
+      teamIds.add(match.winnerTeamId);
+    }
+
+    if (match.loserTeamId) {
+      teamIds.add(match.loserTeamId);
+    }
+  }
+
+  return teamIds;
 }
 
 /**

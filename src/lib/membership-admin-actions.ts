@@ -8,7 +8,6 @@ import {
   OrganizationJoinPolicy,
   Prisma
 } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { openPlayerChallengeWhere } from "@/lib/admin-cleanup";
 import { requireOrganizationAdmin } from "@/lib/authz";
@@ -18,7 +17,10 @@ import {
   assertCanTransferOwnership,
   MembershipAdministrationError
 } from "@/lib/membership-administration";
-import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { getRequestDictionary, getRequestLocale } from "@/lib/i18n/server";
+import { t } from "@/lib/i18n/format";
+import { organizationPath } from "@/lib/organization-paths";
+import { revalidateOrganizationSections, revalidateOrganizationSelection } from "@/lib/revalidation";
 import { prisma } from "@/lib/prisma";
 
 const idSchema = z.string().min(1);
@@ -35,19 +37,13 @@ function value(formData: FormData, key: string) {
 }
 
 function refreshMembershipPages(organizationSlug: string) {
-  revalidatePath(organizationsPath);
-  revalidatePath(organizationPath(organizationSlug, "admin"));
-  revalidatePath(organizationPath(organizationSlug, "ladder"));
-  revalidatePath(organizationPath(organizationSlug, "players"));
-  revalidatePath(organizationPath(organizationSlug, "matches"));
-  revalidatePath(organizationPath(organizationSlug, "challenges"));
-  revalidatePath(organizationPath(organizationSlug, "teams"));
-  revalidatePath(organizationPath(organizationSlug, "account"));
+  revalidateOrganizationSelection();
+  revalidateOrganizationSections(organizationSlug, ["admin", "ladder", "players", "matches", "challenges", "teams", "account"]);
 }
 
 async function requireAdmin(formData: FormData) {
   const slug = slugSchema.parse(value(formData, "organizationSlug"));
-  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
+  return requireOrganizationAdmin(slug, organizationPath(getRequestLocale(), slug, "admin"));
 }
 
 async function getActorMembership(tx: Prisma.TransactionClient, organizationId: string, actorUserId: string) {
@@ -335,7 +331,7 @@ export async function addExistingOrganizationMember(
   const targetUserId = idSchema.safeParse(value(formData, "userId"));
 
   if (!targetUserId.success) {
-    return { error: "Select a verified account to add." };
+    return { error: getRequestDictionary().actions.membershipAdmin.selectAccount };
   }
 
   try {
@@ -380,14 +376,19 @@ export async function addExistingOrganizationMember(
     });
 
     refreshMembershipPages(organization.slug);
-    return { success: `${user.username} was added to ${organization.name}.` };
+    return {
+      success: t(getRequestDictionary().actions.membershipAdmin.memberAdded, {
+        username: user.username,
+        organization: organization.name
+      })
+    };
   } catch (error) {
     if (error instanceof MembershipAdministrationError) {
       return { error: error.message };
     }
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { error: "That account is already a member." };
+      return { error: getRequestDictionary().actions.membershipAdmin.alreadyMember };
     }
 
     throw error;
