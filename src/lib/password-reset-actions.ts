@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { consumePasswordReset, hashPasswordResetToken, requestPasswordReset } from "@/lib/password-reset";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
+import { t } from "@/lib/i18n/format";
+import { getRequestDictionary } from "@/lib/i18n/server";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
 export type PasswordResetFormState = {
@@ -10,29 +12,28 @@ export type PasswordResetFormState = {
   success?: string;
 };
 
-/** The same answer for every address, so the form never reveals who has an account. */
-const REQUEST_CONFIRMATION =
-  "If that address belongs to a Pong Ladder account, password reset instructions are on their way. Check your inbox and spam folder.";
-const RESET_CONFIRMATION =
-  "Your password has been updated and every signed-in device was logged out. Log in with your new password.";
-const INVALID_LINK =
-  "That password reset link is invalid, expired, or already used. Request a new link and try again.";
 const MAX_TOKEN_LENGTH = 256;
 
-const emailSchema = z.string().trim().email("Enter a valid email address.");
+type ResetMessages = ReturnType<typeof getRequestDictionary>["actions"]["passwordReset"];
 
-const passwordSchema = z
-  .object({
-    password: z
-      .string()
-      .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
-      .max(PASSWORD_MAX_LENGTH, `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`),
-    confirmPassword: z.string()
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: "The passwords do not match.",
-    path: ["confirmPassword"]
-  });
+function emailSchema(messages: ResetMessages) {
+  return z.string().trim().email(messages.emailInvalid);
+}
+
+function passwordSchema(messages: ResetMessages) {
+  return z
+    .object({
+      password: z
+        .string()
+        .min(PASSWORD_MIN_LENGTH, t(messages.minLength, { count: PASSWORD_MIN_LENGTH }))
+        .max(PASSWORD_MAX_LENGTH, t(messages.maxLength, { count: PASSWORD_MAX_LENGTH })),
+      confirmPassword: z.string()
+    })
+    .refine((value) => value.password === value.confirmPassword, {
+      message: messages.passwordsDoNotMatch,
+      path: ["confirmPassword"]
+    });
+}
 
 function getValue(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -40,11 +41,11 @@ function getValue(formData: FormData, key: string) {
 
 function validationError(error: unknown) {
   if (error instanceof RateLimitError) {
-    return { error: error.message };
+    return { error: getRequestDictionary().actions.rateLimited };
   }
 
   if (error instanceof z.ZodError) {
-    return { error: error.issues[0]?.message ?? "Check the form and try again." };
+    return { error: error.issues[0]?.message ?? getRequestDictionary().actions.checkForm };
   }
 
   return null;
@@ -56,7 +57,9 @@ export async function sendPasswordResetLink(
 ): Promise<PasswordResetFormState> {
   try {
     consumeRateLimit(getClientRateLimitKey("auth:password-reset:request"), 10, 15 * 60 * 1000);
-    const email = emailSchema.parse(getValue(formData, "email")).toLowerCase();
+    const email = emailSchema(getRequestDictionary().actions.passwordReset)
+      .parse(getValue(formData, "email"))
+      .toLowerCase();
     consumeRateLimit(getClientRateLimitKey("auth:password-reset:address", email), 5, 60 * 60 * 1000);
 
     await requestPasswordReset(email);
@@ -76,7 +79,8 @@ export async function sendPasswordResetLink(
     );
   }
 
-  return { success: REQUEST_CONFIRMATION };
+  // The same answer for every address, so the form never reveals who has an account.
+  return { success: getRequestDictionary().actions.passwordReset.requestConfirmation };
 }
 
 export async function resetPassword(
@@ -86,7 +90,7 @@ export async function resetPassword(
   const token = getValue(formData, "token").trim();
 
   if (!token || token.length > MAX_TOKEN_LENGTH) {
-    return { error: INVALID_LINK };
+    return { error: getRequestDictionary().actions.passwordReset.invalidLink };
   }
 
   try {
@@ -96,7 +100,7 @@ export async function resetPassword(
       5,
       60 * 60 * 1000
     );
-    const parsed = passwordSchema.parse({
+    const parsed = passwordSchema(getRequestDictionary().actions.passwordReset).parse({
       password: getValue(formData, "password"),
       confirmPassword: getValue(formData, "confirmPassword")
     });
@@ -104,10 +108,10 @@ export async function resetPassword(
     const outcome = await consumePasswordReset(token, parsed.password);
 
     if (outcome !== "success") {
-      return { error: INVALID_LINK };
+      return { error: getRequestDictionary().actions.passwordReset.invalidLink };
     }
 
-    return { success: RESET_CONFIRMATION };
+    return { success: getRequestDictionary().actions.passwordReset.resetConfirmation };
   } catch (error) {
     const failure = validationError(error);
 
@@ -120,6 +124,6 @@ export async function resetPassword(
         error instanceof Error ? error.message : "unknown error"
       }`
     );
-    return { error: "The password could not be updated. Please try again." };
+    return { error: getRequestDictionary().actions.passwordReset.updateFailed };
   }
 }

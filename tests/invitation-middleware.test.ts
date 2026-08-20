@@ -16,34 +16,34 @@ function visit(path: string, session?: string) {
 
 describe("invitation routing", () => {
   it("lets a signed-out visitor open an invitation before authenticating", async () => {
-    const response = await visit(`/join/${token}`);
+    const response = await visit(`/sv/join/${token}`);
 
     expect(response.headers.get("location")).toBeNull();
   });
 
   it("returns a signed-in visitor to the invitation they opened", async () => {
-    const response = await visit(`/login?next=%2Fjoin%2F${token}`, "session-token");
+    const response = await visit(`/sv/login?next=%2Fsv%2Fjoin%2F${token}`, "session-token");
 
-    expect(response.headers.get("location")).toBe(`https://pongladder.com/join/${token}`);
+    expect(response.headers.get("location")).toBe(`https://pongladder.com/sv/join/${token}`);
   });
 
   it("sends a signed-in visitor without a pending destination to organization selection", async () => {
-    const response = await visit("/login", "session-token");
+    const response = await visit("/sv/login", "session-token");
 
-    expect(response.headers.get("location")).toBe("https://pongladder.com/organizations");
+    expect(response.headers.get("location")).toBe("https://pongladder.com/sv/organizations");
   });
 
   it("refuses an off-site destination when returning a signed-in visitor", async () => {
-    const response = await visit("/login?next=https%3A%2F%2Fevil.example.com", "session-token");
+    const response = await visit("/en/login?next=https%3A%2F%2Fevil.example.com", "session-token");
 
-    expect(response.headers.get("location")).toBe("https://pongladder.com/organizations");
+    expect(response.headers.get("location")).toBe("https://pongladder.com/en/organizations");
   });
 
   it("still requires authentication for organization pages", async () => {
-    const response = await visit("/org/polisen/ladder");
+    const response = await visit("/sv/org/polisen/ladder");
 
     expect(response.headers.get("location")).toBe(
-      "https://pongladder.com/login?next=%2Forg%2Fpolisen%2Fladder"
+      "https://pongladder.com/sv/login?next=%2Fsv%2Forg%2Fpolisen%2Fladder"
     );
   });
 });

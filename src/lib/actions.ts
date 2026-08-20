@@ -2,10 +2,11 @@
 
 import { ChallengeStatus, MembershipJoinMethod, MembershipRole, MembershipStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOrganizationAdmin, requireOrganizationUser } from "@/lib/authz";
 import { notifyChallengedPlayer } from "@/lib/challenge-notifications";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { organizationPath } from "@/lib/organization-paths";
 import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
@@ -19,7 +20,7 @@ import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
-import { organizationPath } from "@/lib/organization-paths";
+import { revalidateOrganizationSections } from "@/lib/revalidation";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -58,12 +59,7 @@ function maybeValue(formData: FormData, key: string) {
 }
 
 function refreshApp(organizationSlug: string) {
-  revalidatePath(organizationPath(organizationSlug, "ladder"));
-  revalidatePath(organizationPath(organizationSlug, "players"));
-  revalidatePath(organizationPath(organizationSlug, "teams"));
-  revalidatePath(organizationPath(organizationSlug, "matches"));
-  revalidatePath(organizationPath(organizationSlug, "challenges"));
-  revalidatePath(organizationPath(organizationSlug, "account"));
+  revalidateOrganizationSections(organizationSlug, ["ladder", "players", "teams", "matches", "challenges", "account"]);
 }
 
 async function getIsAdmin(userId: string, organizationId: string) {
@@ -84,12 +80,12 @@ function organizationSlug(formData: FormData) {
 
 async function requireActionUser(formData: FormData, section: string) {
   const slug = organizationSlug(formData);
-  return requireOrganizationUser(slug, organizationPath(slug, section));
+  return requireOrganizationUser(slug, organizationPath(getRequestLocale(), slug, section));
 }
 
 async function requireAdmin(formData: FormData) {
   const slug = organizationSlug(formData);
-  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
+  return requireOrganizationAdmin(slug, organizationPath(getRequestLocale(), slug, "admin"));
 }
 
 export async function createPlayer(formData: FormData) {

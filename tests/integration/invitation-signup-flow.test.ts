@@ -46,7 +46,7 @@ vi.mock("@/lib/email", () => ({
   }
 }));
 
-const { GET: continueInvitation } = await import("@/app/join/[token]/continue/route");
+const { GET: continueInvitation } = await import("@/app/[locale]/join/[token]/continue/route");
 const { resumePendingInvitationAction } = await import("@/lib/organization-invitation-actions");
 const { consumeEmailVerification, issueEmailVerification } = await import("@/lib/email-verification");
 const {
@@ -91,7 +91,7 @@ describe.skipIf(!enabled)("organization invitation signup flow", () => {
     const { token, invitation } = await createInvitation();
 
     // 1. A signed-out visitor opens the invitation and is handed off to signup.
-    const handoff = await continueInvitation(invitationRequest(token), { params: { token } });
+    const handoff = await continueInvitation(invitationRequest(token), { params: { locale: "sv", token } });
     storeCookies(handoff);
 
     expect(handoff.headers.get("location")).toContain("/login");
@@ -191,7 +191,7 @@ describe.skipIf(!enabled)("organization invitation signup flow", () => {
 
   it("reports an invitation that lapses while the account is being created", async () => {
     const { token, invitation } = await createInvitation();
-    const handoff = await continueInvitation(invitationRequest(token), { params: { token } });
+    const handoff = await continueInvitation(invitationRequest(token), { params: { locale: "sv", token } });
     storeCookies(handoff);
 
     const user = await createVerifiedUser("latecomer");
@@ -214,10 +214,10 @@ describe.skipIf(!enabled)("organization invitation signup flow", () => {
       data: { revokedAt: new Date() }
     });
 
-    const handoff = await continueInvitation(invitationRequest(token), { params: { token } });
+    const handoff = await continueInvitation(invitationRequest(token), { params: { locale: "sv", token } });
     storeCookies(handoff);
 
-    expect(handoff.headers.get("location")).toContain(`/join/${token}`);
+    expect(handoff.headers.get("location")).toContain(`/sv/join/${token}`);
     expect(state.cookieJar.get(PENDING_INVITATION_COOKIE)).toBeUndefined();
   });
 });
@@ -257,7 +257,7 @@ async function createVerifiedUser(name: string) {
 }
 
 function invitationRequest(token: string) {
-  return new Request(`http://localhost:3000/join/${token}/continue`);
+  return new Request(`http://localhost:3000/sv/join/${token}/continue`);
 }
 
 function storeCookies(response: { cookies: { getAll: () => Array<{ name: string; value: string }> } }) {

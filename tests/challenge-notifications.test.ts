@@ -4,8 +4,8 @@ type ChallengeRow = {
   id: string;
   notifiedAt: Date | null;
   challenger: { id: string; username: string; fullName: string };
-  challenged: { email: string | null };
-  season: { organization: { name: string; slug: string } };
+  challenged: { email: string | null; locale?: string | null };
+  season: { organization: { name: string; slug: string; defaultLocale?: string } };
 };
 
 const state = vi.hoisted(() => ({
@@ -65,8 +65,8 @@ function challenge(overrides: Partial<ChallengeRow> = {}): ChallengeRow {
     id: "challenge-1",
     notifiedAt: null,
     challenger: { id: "challenger", username: "alex", fullName: "Alex Example" },
-    challenged: { email: "rival@example.com" },
-    season: { organization: { name: "Example Club", slug: "example-club" } },
+    challenged: { email: "rival@example.com", locale: null },
+    season: { organization: { name: "Example Club", slug: "example-club", defaultLocale: "sv" } },
     ...overrides
   };
 }
@@ -93,20 +93,28 @@ describe("challenge notifications", () => {
         to: "rival@example.com",
         challengerName: "Alex Example",
         organizationName: "Example Club",
-        challengeUrl: "https://pongladder.example/org/example-club/challenges",
+        challengeUrl: "https://pongladder.example/sv/org/example-club/challenges",
         idempotencyKey: "challenge-notification/challenge-1"
       }
     ]);
   });
 
+  it("uses the player's own language for the link when they have chosen one", async () => {
+    state.challenges = [challenge({ challenged: { email: "rival@example.com", locale: "en" } })];
+
+    await notifyChallengedPlayer("challenge-1");
+
+    expect(state.sent[0].challengeUrl).toBe("https://pongladder.example/en/org/example-club/challenges");
+  });
+
   it("links into the challenge's own organization", async () => {
     state.challenges = [
-      challenge({ season: { organization: { name: "Other Org", slug: "other-org" } } })
+      challenge({ season: { organization: { name: "Other Org", slug: "other-org", defaultLocale: "sv" } } })
     ];
 
     await notifyChallengedPlayer("challenge-1");
 
-    expect(state.sent[0].challengeUrl).toBe("https://pongladder.example/org/other-org/challenges");
+    expect(state.sent[0].challengeUrl).toBe("https://pongladder.example/sv/org/other-org/challenges");
     expect(state.sent[0].organizationName).toBe("Other Org");
   });
 

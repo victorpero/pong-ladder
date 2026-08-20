@@ -1,14 +1,20 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
-import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { getSessionUser, verifyEmailPath } from "@/lib/authz";
 import { issueEmailVerification } from "@/lib/email-verification";
-import { organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
+import {
+  LOCALE_COOKIE_MAX_AGE_SECONDS,
+  LOCALE_COOKIE_NAME,
+  isSupportedLocale,
+  localizeUrl
+} from "@/lib/i18n/config";
+import { getRequestDictionary, getRequestLocale } from "@/lib/i18n/server";
+import { appPath, loginPath, organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
 import { revokePasswordResetTokens } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
@@ -18,66 +24,94 @@ export type AuthFormState = {
   success?: string;
 };
 
-const loginSchema = z.object({
-  identifier: z.string().trim().min(2, "Enter your email or username."),
-  password: z.string().min(8, "Password must be at least 8 characters.")
-});
-
-const createAccountSchema = z.object({
-  username: z.string().trim().min(2, "Username must be at least 2 characters.").max(30),
-  fullName: z.string().trim().min(2, "Enter your full name.").max(120),
-  email: z.string().trim().email("Enter a valid email address."),
-  password: z.string().min(8, "Password must be at least 8 characters.").max(128)
-});
-
-const changePasswordSchema = z
-  .object({
-    currentPassword: z.string().min(8, "Current password must be at least 8 characters."),
-    newPassword: z.string().min(8, "New password must be at least 8 characters.").max(128),
-    confirmPassword: z.string().min(8, "Confirm password must be at least 8 characters.")
-  })
-  .refine((value) => value.newPassword === value.confirmPassword, {
-    message: "New passwords do not match.",
-    path: ["confirmPassword"]
+// Validation copy comes from the active dictionary, so a Swedish form never answers in English.
+function loginSchema(messages: AuthMessages) {
+  return z.object({
+    identifier: z.string().trim().min(2, messages.identifierRequired),
+    password: z.string().min(8, messages.passwordLength)
   });
+}
+
+function createAccountSchema(messages: AuthMessages) {
+  return z.object({
+    username: z.string().trim().min(2, messages.usernameLength).max(30),
+    fullName: z.string().trim().min(2, messages.fullNameRequired).max(120),
+    email: z.string().trim().email(messages.emailInvalid),
+    password: z.string().min(8, messages.passwordLength).max(128)
+  });
+}
+
+function changePasswordSchema(messages: AuthMessages) {
+  return z
+    .object({
+      currentPassword: z.string().min(8, messages.currentPasswordLength),
+      newPassword: z.string().min(8, messages.newPasswordLength).max(128),
+      confirmPassword: z.string().min(8, messages.confirmPasswordLength)
+    })
+    .refine((value) => value.newPassword === value.confirmPassword, {
+      message: messages.passwordsDoNotMatch,
+      path: ["confirmPassword"]
+    });
+}
+
+type AuthMessages = ReturnType<typeof getRequestDictionary>["actions"]["auth"];
 
 function getValue(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
 }
 
 function getSafeRedirectPath(formData: FormData) {
+  const locale = getRequestLocale();
   const nextPath = getValue(formData, "next");
-  const safePath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : organizationsPath;
-  return postAuthenticationPath(safePath);
+  const safePath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : organizationsPath(locale);
+  return postAuthenticationPath(locale, safePath);
 }
 
 function authError(error: unknown): AuthFormState {
+  const dictionary = getRequestDictionary();
+
   if (error instanceof z.ZodError) {
-    return { error: error.issues[0]?.message ?? "Check the form and try again." };
+    return { error: error.issues[0]?.message ?? dictionary.actions.checkForm };
   }
 
   if (error instanceof RateLimitError) {
-    return { error: error.message };
+    return { error: dictionary.actions.rateLimited };
   }
 
   if (error instanceof Error && /invalid email or password|invalid password/i.test(error.message)) {
-    return { error: "Invalid email, username, or password." };
+    return { error: dictionary.actions.auth.invalidCredentials };
   }
 
-  return { error: "Something went wrong. Please try again." };
+  return { error: dictionary.actions.genericError };
 }
 
 async function postSignInPath(userId: string, requestedPath: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { emailVerifiedAt: true }
+    select: { emailVerifiedAt: true, locale: true }
   });
+  // A saved account language survives signing out, so a new device opens in the chosen language.
+  const locale = applySavedLanguagePreference(user?.locale);
 
   if (!user?.emailVerifiedAt) {
-    return `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
+    return `${verifyEmailPath(locale)}?next=${encodeURIComponent(localizeUrl(requestedPath, locale))}`;
   }
 
-  return postAuthenticationPath(requestedPath);
+  return postAuthenticationPath(locale, requestedPath);
+}
+
+function applySavedLanguagePreference(savedLocale: string | null | undefined) {
+  if (!isSupportedLocale(savedLocale)) {
+    return getRequestLocale();
+  }
+
+  cookies().set(LOCALE_COOKIE_NAME, savedLocale, {
+    path: "/",
+    maxAge: LOCALE_COOKIE_MAX_AGE_SECONDS,
+    sameSite: "lax"
+  });
+
+  return savedLocale;
 }
 
 export async function login(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -86,7 +120,7 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:login"), 30, 5 * 60 * 1000);
-    const parsed = loginSchema.parse({
+    const parsed = loginSchema(getRequestDictionary().actions.auth).parse({
       identifier: getValue(formData, "identifier"),
       password: getValue(formData, "password")
     });
@@ -103,7 +137,7 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
     });
 
     if (!user) {
-      return { error: "Invalid email, username, or password." };
+      return { error: getRequestDictionary().actions.auth.invalidCredentials };
     }
 
     const result = await auth.api.signInEmail({
@@ -120,11 +154,11 @@ export async function login(_state: AuthFormState, formData: FormData): Promise<
 
 export async function createAccount(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const requestedPath = getSafeRedirectPath(formData);
-  let destination = `${verifyEmailPath}?next=${encodeURIComponent(requestedPath)}`;
+  let destination = `${verifyEmailPath(getRequestLocale())}?next=${encodeURIComponent(requestedPath)}`;
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:create-account"), 5, 60 * 60 * 1000);
-    const parsed = createAccountSchema.parse({
+    const parsed = createAccountSchema(getRequestDictionary().actions.auth).parse({
       username: getValue(formData, "username"),
       fullName: getValue(formData, "fullName"),
       email: getValue(formData, "email").toLowerCase(),
@@ -145,15 +179,15 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
     try {
       await issueEmailVerification(result.user.id, result.user.email, requestedPath);
     } catch {
-      destination = `${verifyEmailPath}?delivery=failed&next=${encodeURIComponent(requestedPath)}`;
+      destination = `${verifyEmailPath(getRequestLocale())}?delivery=failed&next=${encodeURIComponent(requestedPath)}`;
     }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { error: "A player with that username or email already exists." };
+      return { error: getRequestDictionary().actions.auth.accountExists };
     }
 
     if (error instanceof Error && /already exists|user already/i.test(error.message)) {
-      return { error: "A player with that username or email already exists." };
+      return { error: getRequestDictionary().actions.auth.accountExists };
     }
 
     return authError(error);
@@ -165,20 +199,22 @@ export async function createAccount(_state: AuthFormState, formData: FormData): 
 export async function changePassword(_state: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const sessionUser = await getSessionUser();
 
+  const locale = getRequestLocale();
+
   if (!sessionUser) {
-    redirect("/login?next=/account");
+    redirect(loginPath(locale, appPath(locale, "/account")));
   }
 
   try {
     consumeRateLimit(getClientRateLimitKey("auth:change-password", sessionUser.user.id), 5, 15 * 60 * 1000);
-    const parsed = changePasswordSchema.parse({
+    const parsed = changePasswordSchema(getRequestDictionary().actions.auth).parse({
       currentPassword: getValue(formData, "currentPassword"),
       newPassword: getValue(formData, "newPassword"),
       confirmPassword: getValue(formData, "confirmPassword")
     });
 
     if (parsed.currentPassword === parsed.newPassword) {
-      return { error: "New password must be different from your current password." };
+      return { error: getRequestDictionary().actions.auth.samePassword };
     }
 
     await auth.api.changePassword({
@@ -196,11 +232,10 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
     });
     await revokePasswordResetTokens(sessionUser.user.id);
 
-    revalidatePath("/account");
-    return { success: "Password updated." };
+    return { success: getRequestDictionary().actions.auth.passwordUpdated };
   } catch (error) {
     if (error instanceof Error && /incorrect|invalid password/i.test(error.message)) {
-      return { error: "Current password is incorrect." };
+      return { error: getRequestDictionary().actions.auth.currentPasswordIncorrect };
     }
 
     return authError(error);
@@ -208,6 +243,7 @@ export async function changePassword(_state: AuthFormState, formData: FormData):
 }
 
 export async function logout() {
+  const locale = getRequestLocale();
   await auth.api.signOut({ headers: await headers() });
-  redirect("/login");
+  redirect(loginPath(locale));
 }

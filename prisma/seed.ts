@@ -36,6 +36,7 @@ async function main() {
       slug: "polisen",
       name: "Polisen",
       type: OrganizationType.WORKPLACE,
+      defaultLocale: "sv",
       joinPolicy: OrganizationJoinPolicy.ACCESS_CODE,
       accessCodeHash: configuredPolisenCode ? hashOrganizationAccessCode(configuredPolisenCode) : null,
       accessCodeCiphertext: configuredPolisenCode ? encryptOrganizationCredential(configuredPolisenCode) : null,

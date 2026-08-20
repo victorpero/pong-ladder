@@ -4,11 +4,15 @@ import { Building2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition } from "react";
 import { LogoMark } from "@/components/LogoMark";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import { resumePendingInvitationAction } from "@/lib/organization-invitation-actions";
 import { organizationsPath } from "@/lib/organization-paths";
 
 export function PendingInvitationResumption() {
   const router = useRouter();
+  const locale = useLocale();
+  const dictionary = useDictionary();
+  const selectionPath = organizationsPath(locale);
   const started = useRef(false);
   const [pending, startTransition] = useTransition();
 
@@ -22,16 +26,16 @@ export function PendingInvitationResumption() {
       const resumption = await resumePendingInvitationAction();
 
       if (resumption.outcome === "redeemed" || resumption.outcome === "already_member") {
-        router.replace(`${organizationsPath}?joined=${encodeURIComponent(resumption.organizationSlug)}`);
+        router.replace(`${selectionPath}?joined=${encodeURIComponent(resumption.organizationSlug)}`);
       } else if (resumption.outcome === "none" || resumption.outcome === "authentication_required") {
-        router.replace(organizationsPath);
+        router.replace(selectionPath);
       } else {
-        router.replace(`${organizationsPath}?invitation=${encodeURIComponent(resumption.outcome)}`);
+        router.replace(`${selectionPath}?invitation=${encodeURIComponent(resumption.outcome)}`);
       }
 
       router.refresh();
     });
-  }, [router]);
+  }, [router, selectionPath]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
@@ -43,13 +47,13 @@ export function PendingInvitationResumption() {
           <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-court-50 text-court-700">
             <Building2 aria-hidden="true" size={24} />
           </span>
-          <p className="label mt-5">Organization invitation</p>
-          <h1 className="mt-2 text-3xl font-black">Finishing your invitation</h1>
+          <p className="label mt-5">{dictionary.invitation.label}</p>
+          <h1 className="mt-2 text-3xl font-black">{dictionary.invitation.finishingHeading}</h1>
           <div className="mt-6 rounded-lg bg-court-50 p-4">
             <p className="font-black text-court-700">
-              {pending ? "Accepting invitation..." : "Preparing invitation..."}
+              {pending ? dictionary.invitation.accepting : dictionary.invitation.preparing}
             </p>
-            <p className="mt-1 text-sm text-muted">Your membership will be activated automatically.</p>
+            <p className="mt-1 text-sm text-muted">{dictionary.invitation.automaticActivation}</p>
           </div>
         </section>
       </div>

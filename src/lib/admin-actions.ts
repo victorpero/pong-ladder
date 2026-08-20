@@ -1,11 +1,13 @@
 "use server";
 
 import { ChallengeStatus, MembershipStatus, Prisma } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { openPlayerChallengeWhere, playerChallengeWhere, playerMatchWhere } from "@/lib/admin-cleanup";
 import { requireOrganizationAdmin } from "@/lib/authz";
-import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { getRequestDictionary, getRequestLocale } from "@/lib/i18n/server";
+import { t } from "@/lib/i18n/format";
+import { organizationPath } from "@/lib/organization-paths";
+import { revalidateOrganizationSections, revalidateOrganizationSelection } from "@/lib/revalidation";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { calculateMatchScore } from "@/lib/scoring";
@@ -32,19 +34,13 @@ function value(formData: FormData, key: string) {
 }
 
 function refreshAdmin(organizationSlug: string) {
-  revalidatePath(organizationsPath);
-  revalidatePath(organizationPath(organizationSlug, "admin"));
-  revalidatePath(organizationPath(organizationSlug, "ladder"));
-  revalidatePath(organizationPath(organizationSlug, "players"));
-  revalidatePath(organizationPath(organizationSlug, "matches"));
-  revalidatePath(organizationPath(organizationSlug, "challenges"));
-  revalidatePath(organizationPath(organizationSlug, "teams"));
-  revalidatePath(organizationPath(organizationSlug, "account"));
+  revalidateOrganizationSelection();
+  revalidateOrganizationSections(organizationSlug, ["admin", "ladder", "players", "matches", "challenges", "teams", "account"]);
 }
 
 async function requireAdmin(formData: FormData) {
   const slug = organizationSlugSchema.parse(value(formData, "organizationSlug"));
-  return requireOrganizationAdmin(slug, organizationPath(slug, "admin"));
+  return requireOrganizationAdmin(slug, organizationPath(getRequestLocale(), slug, "admin"));
 }
 
 async function rebuildSeasonStandings(tx: Prisma.TransactionClient, seasonId: string) {
@@ -123,7 +119,7 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
   });
 
   if (!parsed.success) {
-    return { error: "Select a player to add to the season." };
+    return { error: getRequestDictionary().actions.seasonAdmin.selectPlayer };
   }
 
   const { seasonId, userId } = parsed.data;
@@ -169,7 +165,9 @@ export async function adminAddSeasonPlayer(_state: AdminFormState, formData: For
 
     refreshAdmin(organization.slug);
 
-    return { success: `${user.username} was added to the season.` };
+    return {
+      success: t(getRequestDictionary().actions.seasonAdmin.playerAdded, { username: user.username })
+    };
   } catch (error) {
     if (error instanceof AdminActionError) {
       return { error: error.message };

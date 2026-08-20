@@ -42,7 +42,12 @@ vi.mock("@/lib/prisma", () => ({
   }
 }));
 
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
     throw new Error(`REDIRECT:${path}`);
@@ -90,11 +95,19 @@ describe("organization route context", () => {
     await expect(requireOrganizationUser("private-org")).rejects.toThrow("NOT_FOUND");
   });
 
-  it("preserves the scoped destination while requiring email verification", async () => {
+  it("preserves the scoped destination and language while requiring email verification", async () => {
     state.verified = false;
 
-    await expect(requireOrganizationUser("polisen", "/org/polisen/matches")).rejects.toThrow(
-      "REDIRECT:/verify-email?next=%2Forg%2Fpolisen%2Fmatches"
+    await expect(requireOrganizationUser("polisen", "/en/org/polisen/matches")).rejects.toThrow(
+      "REDIRECT:/en/verify-email?next=%2Fen%2Forg%2Fpolisen%2Fmatches"
+    );
+  });
+
+  it("defaults the destination to the organization ladder in the active language", async () => {
+    state.verified = false;
+
+    await expect(requireOrganizationUser("polisen")).rejects.toThrow(
+      "REDIRECT:/en/verify-email?next=%2Fen%2Forg%2Fpolisen%2Fladder"
     );
   });
 

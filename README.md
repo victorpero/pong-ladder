@@ -15,6 +15,7 @@ Pong Ladder is the hosted service. This repository contains its open-source appl
 - Lets players challenge nearby opponents and record best-of-five results.
 - Updates rankings from completed matches and preserves challenge history.
 - Supports invitations, access codes, approval flows, and organization administration.
+- Runs in Swedish and English, with each language on its own shareable address.
 
 ## Who it is for
 

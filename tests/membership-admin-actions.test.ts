@@ -25,6 +25,12 @@ const state = vi.hoisted(() => ({
   challengeCleanupOrganizations: [] as string[]
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 vi.mock("@/lib/authz", () => ({

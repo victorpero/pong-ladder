@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { useDictionary } from "@/lib/i18n/locale-context";
 
 export function InviteSharePanel({
   organizationCode,
@@ -12,28 +13,34 @@ export function InviteSharePanel({
   invitationUrl: string;
   qrCodeDataUrl: string;
 }) {
+  const dictionary = useDictionary();
+
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="grid gap-5">
         <ShareValue
-          label="Organization code"
+          label={dictionary.invite.organizationCodeLabel}
           value={organizationCode}
-          copyLabel="Copy code"
+          copyLabel={dictionary.invite.copyCode}
           valueClassName="text-xl tracking-[0.18em]"
         />
-        <ShareValue label="Invitation link" value={invitationUrl} copyLabel="Copy link" />
+        <ShareValue
+          label={dictionary.invite.invitationLinkLabel}
+          value={invitationUrl}
+          copyLabel={dictionary.invite.copyLink}
+        />
       </div>
       <div className="rounded-xl border border-line bg-white p-4 text-center">
-        <p className="label">Scan to join</p>
+        <p className="label">{dictionary.invite.scanHeading}</p>
         <Image
           className="mx-auto mt-3 rounded-lg"
           src={qrCodeDataUrl}
-          alt="QR code for the organization invitation link"
+          alt={dictionary.invite.qrCodeAlt}
           width={256}
           height={256}
           unoptimized
         />
-        <p className="mt-3 text-xs leading-5 text-muted">Open the camera app and scan this code.</p>
+        <p className="mt-3 text-xs leading-5 text-muted">{dictionary.invite.scanHelp}</p>
       </div>
     </div>
   );
@@ -50,6 +57,7 @@ function ShareValue({
   copyLabel: string;
   valueClassName?: string;
 }) {
+  const dictionary = useDictionary();
   const [copied, setCopied] = useState(false);
 
   return (
@@ -70,7 +78,7 @@ function ShareValue({
             setCopied(true);
           }}
         >
-          {copied ? "Copied" : copyLabel}
+          {copied ? dictionary.common.copied : copyLabel}
         </button>
       </div>
     </div>

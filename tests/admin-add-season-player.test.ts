@@ -22,7 +22,10 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("next/headers", () => ({
-  cookies: () => ({ get: () => ({ value: "session-token" }) })
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
 }));
 
 vi.mock("next/cache", () => ({

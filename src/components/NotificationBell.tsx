@@ -3,6 +3,8 @@
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { plural } from "@/lib/i18n/format";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import { organizationPath } from "@/lib/organization-paths";
 
 type NotificationState = {
@@ -14,6 +16,8 @@ type NotificationState = {
 };
 
 export function NotificationBell({ organizationSlug }: { organizationSlug: string }) {
+  const locale = useLocale();
+  const dictionary = useDictionary();
   const [notifications, setNotifications] = useState<NotificationState>({ pendingChallenges: 0, challenges: [] });
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -97,7 +101,7 @@ export function NotificationBell({ organizationSlug }: { organizationSlug: strin
   }, [loadNotifications]);
 
   const count = notifications.pendingChallenges;
-  const label = count > 0 ? `${count} pending challenge${count === 1 ? "" : "s"}` : "No notifications";
+  const label = count > 0 ? plural(count, dictionary.notifications.pending) : dictionary.notifications.empty;
 
   return (
     <div ref={containerRef} className="relative">
@@ -126,21 +130,21 @@ export function NotificationBell({ organizationSlug }: { organizationSlug: strin
 
       {isOpen ? (
         <div className="absolute right-0 top-12 z-50 w-72 rounded-lg border border-line bg-white p-2 shadow-soft">
-          <p className="px-3 py-2 text-xs font-black uppercase tracking-wide text-muted">Notifications</p>
+          <p className="px-3 py-2 text-xs font-black uppercase tracking-wide text-muted">{dictionary.notifications.heading}</p>
           {notifications.challenges.length === 0 ? (
-            <p className="rounded-md px-3 py-4 text-sm font-semibold text-muted">No notifications</p>
+            <p className="rounded-md px-3 py-4 text-sm font-semibold text-muted">{dictionary.notifications.empty}</p>
           ) : (
             <div className="grid gap-1">
               {notifications.challenges.map((challenge) => (
                 <Link
                   key={challenge.id}
-                  href={`${organizationPath(organizationSlug, "challenges")}#${challenge.id}`}
+                  href={`${organizationPath(locale, organizationSlug, "challenges")}#${challenge.id}`}
                   onClick={() => setIsOpen(false)}
                   className="rounded-md px-3 py-2 text-sm transition hover:bg-slate-50"
                 >
                   <span className="font-black text-ink">{challenge.challengerName}</span>{" "}
-                  <span className="font-bold text-muted">challenges</span>{" "}
-                  <span className="font-black text-ink">you</span>
+                  <span className="font-bold text-muted">{dictionary.notifications.challengesYou}</span>{" "}
+                  <span className="font-black text-ink">{dictionary.notifications.you}</span>
                 </Link>
               ))}
             </div>

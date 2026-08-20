@@ -7,14 +7,15 @@ import {
   OrganizationVisibility,
   Prisma
 } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOrganizationAdmin, requireOrganizationOwner } from "@/lib/authz";
 import { generateOrganizationAccessCode, hashOrganizationAccessCode } from "@/lib/organization-access-code";
 import { encryptOrganizationCredential } from "@/lib/organization-credential";
 import { normalizeEmailDomains } from "@/lib/organization-domain";
-import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { SUPPORTED_LOCALES } from "@/lib/i18n/config";
+import { getRequestDictionary } from "@/lib/i18n/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateOrganizationSections, revalidateOrganizationSelection } from "@/lib/revalidation";
 
 export type OrganizationPolicyState = {
   error?: string;
@@ -26,7 +27,8 @@ const policySchema = z.nativeEnum(OrganizationJoinPolicy);
 const detailsSchema = z.object({
   name: z.string().trim().min(2).max(100),
   type: z.nativeEnum(OrganizationType),
-  visibility: z.nativeEnum(OrganizationVisibility)
+  visibility: z.nativeEnum(OrganizationVisibility),
+  defaultLocale: z.enum(SUPPORTED_LOCALES)
 });
 
 function value(formData: FormData, key: string) {
@@ -34,9 +36,8 @@ function value(formData: FormData, key: string) {
 }
 
 function refreshPolicyPages(slug: string) {
-  revalidatePath(organizationsPath);
-  revalidatePath(organizationPath(slug, "admin"));
-  revalidatePath(organizationPath(slug, "invite"));
+  revalidateOrganizationSelection();
+  revalidateOrganizationSections(slug, ["admin", "invite"]);
 }
 
 export async function updateOrganizationJoinPolicy(
@@ -53,11 +54,11 @@ export async function updateOrganizationJoinPolicy(
   const allowedEmailDomains = normalizeEmailDomains(rawDomains);
 
   if (policy === OrganizationJoinPolicy.EMAIL_DOMAIN && allowedEmailDomains.length === 0) {
-    return { error: "Add at least one valid email domain, such as example.com." };
+    return { error: getRequestDictionary().actions.organizationPolicy.domainRequired };
   }
 
   if (rawDomains.length !== allowedEmailDomains.length) {
-    return { error: "One or more email domains are invalid or duplicated." };
+    return { error: getRequestDictionary().actions.organizationPolicy.domainInvalid };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -78,7 +79,7 @@ export async function updateOrganizationJoinPolicy(
   });
 
   refreshPolicyPages(slug);
-  return { success: "Join policy updated." };
+  return { success: getRequestDictionary().actions.organizationPolicy.policyUpdated };
 }
 
 export async function updateOrganizationDetails(
@@ -89,11 +90,12 @@ export async function updateOrganizationDetails(
   const parsed = detailsSchema.safeParse({
     name: value(formData, "name"),
     type: value(formData, "type"),
-    visibility: value(formData, "visibility")
+    visibility: value(formData, "visibility"),
+    defaultLocale: value(formData, "defaultLocale")
   });
 
   if (!parsed.success) {
-    return { error: "Check the organization name, type, and visibility." };
+    return { error: getRequestDictionary().actions.organizationPolicy.detailsInvalid };
   }
 
   const { organization, membership } = await requireOrganizationOwner(slug);
@@ -110,7 +112,7 @@ export async function updateOrganizationDetails(
   });
 
   refreshPolicyPages(slug);
-  return { success: "Organization settings updated." };
+  return { success: getRequestDictionary().actions.organizationPolicy.settingsUpdated };
 }
 
 export async function rotateOrganizationAccessCode(
@@ -155,9 +157,7 @@ export async function rotateOrganizationAccessCode(
   }
 
   refreshPolicyPages(slug);
-  return {
-    success: "A new organization code was generated. The previous code no longer works."
-  };
+  return { success: getRequestDictionary().actions.organizationPolicy.codeGenerated };
 }
 
 export async function disableOrganizationAccessCode(
@@ -187,5 +187,5 @@ export async function disableOrganizationAccessCode(
   });
 
   refreshPolicyPages(slug);
-  return { success: "The organization code was disabled." };
+  return { success: getRequestDictionary().actions.organizationPolicy.codeDisabled };
 }

@@ -37,13 +37,19 @@ const state = vi.hoisted(() => ({
   failMembershipCreation: false
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
     throw new Error(`REDIRECT:${path}`);
   }
 }));
 vi.mock("@/lib/authz", () => ({
-  verifyEmailPath: "/verify-email",
+  verifyEmailPath: (locale: string) => `/${locale}/verify-email`,
   requireAuthenticatedUser: async () => ({ user: state.user })
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -117,9 +123,22 @@ afterAll(() => {
 });
 
 describe("organization creation", () => {
+  it("stores the chosen default language and falls back to Swedish", async () => {
+    await expect(createOrganization({}, form("English Club", "English Club", "en"))).rejects.toThrow(
+      "REDIRECT:/en/organizations?created=english-club"
+    );
+    expect(state.organizations[0]).toMatchObject({ slug: "english-club", defaultLocale: "en" });
+
+    state.organizations = [];
+    await expect(createOrganization({}, form("Svenska Klubben", "Svenska Klubben"))).rejects.toThrow(
+      "REDIRECT:/en/organizations?created=svenska-klubben"
+    );
+    expect(state.organizations[0]).toMatchObject({ slug: "svenska-klubben", defaultLocale: "sv" });
+  });
+
   it("creates the organization and active owner membership atomically", async () => {
     await expect(createOrganization({}, form("Stockholm Club", "Stockholm Club"))).rejects.toThrow(
-      "REDIRECT:/organizations?created=stockholm-club"
+      "REDIRECT:/en/organizations?created=stockholm-club"
     );
 
     expect(state.organizations).toContainEqual(
@@ -188,7 +207,7 @@ describe("organization creation", () => {
   });
 });
 
-function form(name: string, slug: string) {
+function form(name: string, slug: string, defaultLocale?: string) {
   const formData = new FormData();
   formData.set("name", name);
   formData.set("slug", slug);
@@ -196,5 +215,10 @@ function form(name: string, slug: string) {
   formData.set("joinPolicy", OrganizationJoinPolicy.INVITE_ONLY);
   formData.set("visibility", OrganizationVisibility.PRIVATE);
   formData.set("allowedEmailDomains", "");
+
+  if (defaultLocale !== undefined) {
+    formData.set("defaultLocale", defaultLocale);
+  }
+
   return formData;
 }

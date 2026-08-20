@@ -1,7 +1,6 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getAppBaseUrl } from "@/lib/app-url";
@@ -13,12 +12,13 @@ import {
   redeemOrganizationInvitationById,
   type InvitationRedemptionResult
 } from "@/lib/organization-invitation";
-import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import { getRequestDictionary } from "@/lib/i18n/server";
 import {
   clearedPendingInvitationCookie,
   PENDING_INVITATION_COOKIE,
   readPendingInvitation
 } from "@/lib/pending-invitation";
+import { revalidateOrganizationSections, revalidateOrganizationSelection } from "@/lib/revalidation";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -49,8 +49,8 @@ function value(formData: FormData, key: string) {
 }
 
 function refreshInvitationPages(organizationSlug: string) {
-  revalidatePath(organizationsPath);
-  revalidatePath(organizationPath(organizationSlug, "admin"));
+  revalidateOrganizationSelection();
+  revalidateOrganizationSections(organizationSlug, ["admin"]);
 }
 
 export async function createOrganizationInvitation(
@@ -65,7 +65,7 @@ export async function createOrganizationInvitation(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Check the invitation settings." };
+    return { error: getRequestDictionary().actions.organizationInvitation.checkSettings };
   }
 
   const expiresAt = new Date(Date.now() + parsed.data.expiresInHours * 60 * 60 * 1000);
@@ -86,7 +86,7 @@ export async function createOrganizationInvitation(
 
       refreshInvitationPages(organization.slug);
       return {
-        success: "Invitation created. Copy this link now; it will not be shown again.",
+        success: getRequestDictionary().actions.organizationInvitation.created,
         invitationUrl: `${getAppBaseUrl()}/join/${token}`
       };
     } catch (error) {
@@ -96,7 +96,7 @@ export async function createOrganizationInvitation(
     }
   }
 
-  return { error: "The invitation could not be created. Try again." };
+  return { error: getRequestDictionary().actions.organizationInvitation.failed };
 }
 
 export async function revokeOrganizationInvitation(formData: FormData) {

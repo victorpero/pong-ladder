@@ -17,6 +17,12 @@ const state = vi.hoisted(() => ({
   invitations: [] as InvitationRow[]
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: () => ({
+    get: (name: string) => ({ value: name === "pong-ladder-locale" ? "en" : "session-token" })
+  }),
+  headers: () => new Headers()
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/app-url", () => ({ getAppBaseUrl: () => "https://pong.example" }));
 vi.mock("@/lib/authz", () => ({

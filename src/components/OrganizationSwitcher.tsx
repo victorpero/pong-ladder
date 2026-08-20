@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
 import { organizationPath } from "@/lib/organization-paths";
 
 type OrganizationOption = {
@@ -12,6 +13,8 @@ type OrganizationOption = {
 
 export function OrganizationSwitcher({ currentSlug }: { currentSlug: string }) {
   const router = useRouter();
+  const locale = useLocale();
+  const dictionary = useDictionary();
   const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
 
   useEffect(() => {
@@ -44,9 +47,9 @@ export function OrganizationSwitcher({ currentSlug }: { currentSlug: string }) {
   return (
     <select
       className="max-w-48 rounded-md border border-line bg-white px-2.5 py-2 text-sm font-bold text-ink outline-none focus:border-court-500"
-      aria-label="Switch organization"
+      aria-label={dictionary.nav.switchOrganization}
       value={currentSlug}
-      onChange={(event) => router.push(organizationPath(event.target.value))}
+      onChange={(event) => router.push(organizationPath(locale, event.target.value))}
     >
       {organizations.map((organization) => (
         <option key={organization.slug} value={organization.slug}>
