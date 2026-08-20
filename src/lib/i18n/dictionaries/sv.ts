@@ -23,7 +23,8 @@ export const sv: Dictionary = {
     verifyEmailTitle: "Verifiera e-post",
     forgotPasswordTitle: "Glömt lösenord",
     resetPasswordTitle: "Återställ lösenord",
-    invitationTitle: "Inbjudan till organisation"
+    invitationTitle: "Inbjudan till organisation",
+    changelogTitle: "Nyheter"
   },
 
   common: {
@@ -58,6 +59,23 @@ export const sv: Dictionary = {
     optionLabel: "Visa Pong Ladder på {language}"
   },
 
+  changelog: {
+    label: "Nyheter",
+    intro: "Allt som har ändrats i Pong Ladder, senaste först.",
+    released: "Släpptes {date}",
+    backToOrganizations: "Tillbaka till organisationer",
+    backToLadder: "Tillbaka till stegen",
+    groups: {
+      new: "Nytt",
+      improved: "Förbättrat",
+      fixed: "Rättat"
+    }
+  },
+  footer: {
+    whatsNew: "Nyheter",
+    newBadge: "Nytt",
+    developmentBuild: "dev"
+  },
   nav: {
     primary: "Huvudnavigering",
     account: "Kontonavigering",
@@ -65,7 +83,6 @@ export const sv: Dictionary = {
     matches: "Matcher",
     challenges: "Utmaningar",
     teams: "Lag",
-    players: "Spelare",
     rules: "Regler",
     invite: "Bjud in",
     admin: "Administration",
@@ -100,6 +117,7 @@ export const sv: Dictionary = {
     label: "Stege",
     standingsHeading: "Aktuell ställning",
     challengePlayer: "Utmana spelare",
+    playerDirectory: "Spelarkatalog",
     emptyTitle: "Stegen är tom",
     emptyBody: "Lägg till spelare och anslut dem till den aktiva säsongen.",
     rivalBadge: "Rival",

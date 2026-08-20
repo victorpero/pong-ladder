@@ -53,6 +53,8 @@ describe("representative rendering", () => {
     expect(getDictionary("sv").nav.challenges).toBe("Utmaningar");
     expect(getDictionary("en").challenges.status.Pending).toBe("Pending");
     expect(getDictionary("sv").challenges.status.Pending).toBe("Väntar");
+    expect(getDictionary("en").ladder.challengeControl.challenge).toBe("Challenge");
+    expect(getDictionary("sv").ladder.challengeControl.challenge).toBe("Utmana");
   });
 
   it("leaves organization, brand, and player names untouched while translating around them", () => {

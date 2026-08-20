@@ -108,9 +108,15 @@ export default async function OrganizationLadderPage({
             </p>
             <h1 className="mt-1 text-3xl font-black sm:text-4xl">{dictionary.ladder.standingsHeading}</h1>
           </div>
-          <Link className="button" href={organizationPath(locale, organizationSlug, "challenges")}>
-            {dictionary.ladder.challengePlayer}
-          </Link>
+          {/* The removed Players tab lives on here: the directory also covers members who have not joined the season. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link className="button-secondary" href={organizationPath(locale, organizationSlug, "players")}>
+              {dictionary.ladder.playerDirectory}
+            </Link>
+            <Link className="button" href={organizationPath(locale, organizationSlug, "challenges")}>
+              {dictionary.ladder.challengePlayer}
+            </Link>
+          </div>
         </div>
 
         {ladder.length === 0 ? (
