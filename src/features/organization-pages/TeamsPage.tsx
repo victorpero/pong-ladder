@@ -108,7 +108,7 @@ export default async function OrganizationTeamsPage({
                     </div>
 
                     {team.members.length === 0 && hasSeasonHistory ? (
-                      <p className="mt-3 text-sm text-muted">Kept for its recorded season results.</p>
+                      <p className="mt-3 text-sm text-muted">{dictionary.teams.keptForResults}</p>
                     ) : null}
 
                     <div className="mt-4 flex flex-wrap gap-2">
