@@ -60,6 +60,11 @@ select {
   .stat-label {
     @apply text-xs font-semibold uppercase tracking-normal text-muted;
   }
+
+  /* Compact enough to sit on a ladder row on a phone, still a 40px touch target. */
+  .ladder-action {
+    @apply inline-flex min-h-10 min-w-[86px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-black uppercase tracking-normal transition disabled:cursor-not-allowed disabled:opacity-60;
+  }
 }
 
 @keyframes rank-in {

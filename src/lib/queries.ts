@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { activeChallengesForPlayerWhere } from "@/lib/challenge-rules";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
@@ -55,6 +56,17 @@ export async function getLadder(seasonId: string) {
       };
     })
   );
+}
+
+/**
+ * The challenges that still tie the viewer to someone this season, which is all
+ * the ladder needs to decide what each row may offer.
+ */
+export async function getActiveChallengesForPlayer(seasonId: string, userId: string) {
+  return prisma.challenge.findMany({
+    where: activeChallengesForPlayerWhere(seasonId, userId),
+    select: { id: true, challengerId: true, challengedId: true, status: true }
+  });
 }
 
 export async function getTeamLadder(seasonId: string) {

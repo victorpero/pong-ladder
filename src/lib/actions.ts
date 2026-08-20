@@ -10,13 +10,16 @@ import { issueEmailVerification } from "@/lib/email-verification";
 import {
   activeChallengeBetweenWhere,
   canChallengePlayer,
+  challengeFailedMessage,
   challengeWindowMessage,
-  duplicateActiveChallengeMessage
+  duplicateActiveChallengeMessage,
+  selfChallengeMessage,
+  staleChallengeMessage
 } from "@/lib/challenge-rules";
 import { withEffectivePositions } from "@/lib/ladder-positions";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
-import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
+import { RateLimitError, consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
 import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
@@ -48,6 +51,39 @@ const matchSchema = z.object({
     .transform((value) => (value ? new Date(value) : new Date())),
   challengeId: idSchema
 });
+
+/** Feedback for the inline ladder controls, which report failures in place. */
+export type ChallengeFormState = {
+  error?: string;
+};
+
+/** Rejections a player can act on, surfaced next to the control instead of on an error page. */
+class ChallengeActionError extends Error {}
+
+const ladderChallengeSchema = z.object({
+  seasonId: idSchema,
+  challengedId: idSchema
+});
+
+/**
+ * Next signals redirects and 404s by throwing, so those have to keep travelling
+ * up; everything else becomes a message the row can render.
+ */
+function isFrameworkControlFlow(error: unknown) {
+  return typeof (error as { digest?: unknown })?.digest === "string";
+}
+
+function toChallengeFormState(error: unknown, fallback: string): ChallengeFormState {
+  if (isFrameworkControlFlow(error)) {
+    throw error;
+  }
+
+  if (error instanceof ChallengeActionError || error instanceof RateLimitError) {
+    return { error: error.message };
+  }
+
+  return { error: fallback };
+}
 
 function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -254,16 +290,26 @@ export async function deleteTeam(formData: FormData) {
   refreshApp(organization.slug);
 }
 
-export async function createChallenge(formData: FormData) {
-  const { session, organization } = await requireActionUser(formData, "challenges");
-  consumeRateLimit(getClientRateLimitKey("challenge:create", session.sub), 20, 5 * 60 * 1000);
-
-  const seasonId = idSchema.parse(value(formData, "seasonId"));
-  const challengerId = session.sub;
-  const challengedId = idSchema.parse(value(formData, "challengedId"));
+/**
+ * The single path that opens a challenge, so every entry point — the challenge
+ * board and the ladder rows — is validated and rate limited the same way.
+ * Failures raise {@link ChallengeActionError} with a message meant for players.
+ */
+async function openChallenge({
+  organization,
+  challengerId,
+  seasonId,
+  challengedId
+}: {
+  organization: { id: string; slug: string };
+  challengerId: string;
+  seasonId: string;
+  challengedId: string;
+}) {
+  consumeRateLimit(getClientRateLimitKey("challenge:create", challengerId), 20, 5 * 60 * 1000);
 
   if (challengerId === challengedId) {
-    throw new Error("Players cannot challenge themselves.");
+    throw new ChallengeActionError(selfChallengeMessage);
   }
 
   let createdChallengeId: string;
@@ -276,7 +322,7 @@ export async function createChallenge(formData: FormData) {
       });
 
       if (!season || season.organizationId !== organization.id) {
-        throw new Error("That season does not exist.");
+        throw new ChallengeActionError("That season does not exist.");
       }
 
       const standings = await tx.seasonPlayer.findMany({
@@ -295,11 +341,11 @@ export async function createChallenge(formData: FormData) {
       const challenged = ladder.find((player) => player.userId === challengedId);
 
       if (!challenger || !challenged) {
-        throw new Error("Both players must be joined to the season.");
+        throw new ChallengeActionError("Both players must be joined to the season.");
       }
 
       if (!canChallengePlayer(challenger, challenged)) {
-        throw new Error(challengeWindowMessage);
+        throw new ChallengeActionError(challengeWindowMessage);
       }
 
       const existingActiveChallenge = await tx.challenge.findFirst({
@@ -308,7 +354,7 @@ export async function createChallenge(formData: FormData) {
       });
 
       if (existingActiveChallenge) {
-        throw new Error(duplicateActiveChallengeMessage);
+        throw new ChallengeActionError(duplicateActiveChallengeMessage);
       }
 
       const priorDeclines = await tx.challenge.count({
@@ -337,7 +383,7 @@ export async function createChallenge(formData: FormData) {
     // Two simultaneous requests both pass the lookup above; the unique index on
     // the active pair rejects whichever insert loses the race.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error(duplicateActiveChallengeMessage);
+      throw new ChallengeActionError(duplicateActiveChallengeMessage);
     }
 
     throw error;
@@ -349,26 +395,111 @@ export async function createChallenge(formData: FormData) {
   refreshApp(organization.slug);
 }
 
-export async function acceptChallenge(formData: FormData) {
+export async function createChallenge(formData: FormData) {
   const { session, organization } = await requireActionUser(formData, "challenges");
 
-  const id = idSchema.parse(value(formData, "challengeId"));
+  await openChallenge({
+    organization,
+    challengerId: session.sub,
+    seasonId: idSchema.parse(value(formData, "seasonId")),
+    challengedId: idSchema.parse(value(formData, "challengedId"))
+  });
+}
 
+/**
+ * Moves a pending challenge to accepted for the player it was aimed at.
+ *
+ * The status is part of the update filter, so a row that was answered or
+ * completed since the page rendered simply matches nothing instead of
+ * overwriting a newer state.
+ */
+async function acceptPendingChallenge(userId: string, organizationId: string, challengeId: string) {
   const result = await prisma.challenge.updateMany({
     where: {
-      id,
-      organizationId: organization.id,
-      challengedId: session.sub,
+      id: challengeId,
+      organizationId,
+      challengedId: userId,
       status: ChallengeStatus.Pending
     },
     data: { status: ChallengeStatus.Accepted }
   });
 
-  if (result.count === 0) {
+  return result.count > 0;
+}
+
+export async function acceptChallenge(formData: FormData) {
+  const { session, organization } = await requireActionUser(formData, "challenges");
+
+  const id = idSchema.parse(value(formData, "challengeId"));
+  const accepted = await acceptPendingChallenge(session.sub, organization.id, id);
+
+  if (!accepted) {
     throw new Error("Only the challenged player can accept a pending challenge.");
   }
 
   refreshApp(organization.slug);
+}
+
+/**
+ * Ladder-row challenge creation. Same rules as the challenge board, but a
+ * rejection comes back as form state so a single row can explain itself without
+ * replacing the page with an error boundary.
+ */
+export async function challengeFromLadder(
+  _state: ChallengeFormState,
+  formData: FormData
+): Promise<ChallengeFormState> {
+  const { session, organization } = await requireActionUser(formData, "ladder");
+
+  const parsed = ladderChallengeSchema.safeParse({
+    seasonId: value(formData, "seasonId"),
+    challengedId: value(formData, "challengedId")
+  });
+
+  if (!parsed.success) {
+    return { error: challengeFailedMessage };
+  }
+
+  try {
+    await openChallenge({
+      organization,
+      challengerId: session.sub,
+      seasonId: parsed.data.seasonId,
+      challengedId: parsed.data.challengedId
+    });
+  } catch (error) {
+    return toChallengeFormState(error, challengeFailedMessage);
+  }
+
+  return {};
+}
+
+/** Ladder-row acceptance of an incoming challenge, reported the same way. */
+export async function acceptChallengeFromLadder(
+  _state: ChallengeFormState,
+  formData: FormData
+): Promise<ChallengeFormState> {
+  const { session, organization } = await requireActionUser(formData, "ladder");
+
+  const parsed = idSchema.safeParse(value(formData, "challengeId"));
+
+  if (!parsed.success) {
+    return { error: staleChallengeMessage };
+  }
+
+  try {
+    const accepted = await acceptPendingChallenge(session.sub, organization.id, parsed.data);
+
+    if (!accepted) {
+      return { error: staleChallengeMessage };
+    }
+  } catch (error) {
+    return toChallengeFormState(error, staleChallengeMessage);
+  }
+
+  refreshApp(organization.slug);
+
+  return {};
 }
 
 export async function declineChallenge(formData: FormData) {
