@@ -235,6 +235,8 @@ export const sv: Dictionary = {
     challengeHeading: "Utmaningsregler",
     challengeItems: {
       window: "En spelare får utmana vem som helst inom 3 placeringar på stegen, ovanför eller under sig.",
+      tiedPositions:
+        "Spelare med lika många poäng delar samma placering på stegen, så de har samma utmaningsalternativ och får även utmana varandra.",
       declineOnce: "En spelare får bara avböja en utmaning en gång.",
       secondDecline:
         "Om samma spelare avböjer en andra utmaning räknas matchen som en förlust med 3-0 för den spelaren."

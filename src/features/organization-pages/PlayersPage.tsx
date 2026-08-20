@@ -54,7 +54,7 @@ export default async function OrganizationPlayersPage({
                   <div>
                     <p className="stat-label">{dictionary.common.rank}</p>
                     <p className="font-bold">
-                      {ladderEntry ? `#${ladderEntry.currentRank}` : dictionary.players.notJoined}
+                      {ladderEntry ? `#${ladderEntry.effectivePosition}` : dictionary.players.notJoined}
                     </p>
                   </div>
                   <div>

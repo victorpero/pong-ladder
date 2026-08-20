@@ -69,7 +69,7 @@ export default async function OrganizationMatchesPage({
           label: publicNames.get(player.id) ?? player.username,
           detail: ladderEntry
             ? t(dictionary.matches.playerRankDetail, {
-                rank: ladderEntry.currentRank,
+                rank: ladderEntry.effectivePosition,
                 points: ladderEntry.points
               })
             : dictionary.matches.acceptedChallenge

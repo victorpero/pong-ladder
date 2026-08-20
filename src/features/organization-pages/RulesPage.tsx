@@ -24,6 +24,7 @@ export default async function OrganizationRulesPage({
           <h2 className="text-2xl font-black text-ink">{rules.challengeHeading}</h2>
           <ul className="list-disc space-y-2 pl-5">
             <li>{rules.challengeItems.window}</li>
+            <li>{rules.challengeItems.tiedPositions}</li>
             <li>{rules.challengeItems.declineOnce}</li>
             <li>{rules.challengeItems.secondDecline}</li>
           </ul>
