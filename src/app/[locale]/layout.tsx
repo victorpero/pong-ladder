@@ -13,6 +13,7 @@ import {
 } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { LocaleProvider } from "@/lib/i18n/locale-context";
+import { getCurrentVersion } from "@/lib/release-notes";
 import "../globals.css";
 
 export function generateMetadata({ params }: { params: { locale: string } }): Metadata {
@@ -67,7 +68,8 @@ export default function LocaleLayout({
     <html lang={params.locale}>
       <body>
         <LocaleProvider locale={params.locale} dictionary={dictionary}>
-          <AppChrome>{children}</AppChrome>
+          {/* Resolved on the server so the release notes never ship to the browser just to print a version. */}
+          <AppChrome version={getCurrentVersion()}>{children}</AppChrome>
         </LocaleProvider>
       </body>
     </html>

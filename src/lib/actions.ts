@@ -12,8 +12,12 @@ import {
   activeChallengeBetweenWhere,
   canChallengePlayer,
   challengeWindowMessage,
-  duplicateActiveChallengeMessage
+  duplicateActiveChallengeMessage,
+  isStaleChallengeResultMessage,
+  staleChallengeResultMessage,
+  unreportableChallengeMessage
 } from "@/lib/challenge-rules";
+import { withEffectivePositions } from "@/lib/ladder-positions";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
@@ -21,6 +25,7 @@ import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
 import { revalidateOrganizationSections } from "@/lib/revalidation";
+import { UserFacingError, isUserFacingError } from "@/lib/user-facing-error";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -274,7 +279,7 @@ export async function createChallenge(formData: FormData) {
         throw new Error("That season does not exist.");
       }
 
-      const ladder = await tx.seasonPlayer.findMany({
+      const standings = await tx.seasonPlayer.findMany({
         where: {
           seasonId,
           organizationId: organization.id,
@@ -282,6 +287,9 @@ export async function createChallenge(formData: FormData) {
         },
         orderBy: { currentRank: "asc" }
       });
+      // Same calculation the ladder pages use, so the form can never offer a
+      // target this check rejects.
+      const ladder = withEffectivePositions(standings);
 
       const challenger = ladder.find((player) => player.userId === challengerId);
       const challenged = ladder.find((player) => player.userId === challengedId);
@@ -442,7 +450,7 @@ export async function registerMatchResult(formData: FormData) {
   });
 
   if (parsed.winnerId === parsed.loserId) {
-    throw new Error("Winner and loser must be different players.");
+    throw new UserFacingError("Winner and loser must be different players.");
   }
 
   validateBestOfFiveResult(3, parsed.loserSets);
@@ -450,21 +458,85 @@ export async function registerMatchResult(formData: FormData) {
   const isAdmin = await getIsAdmin(session.sub, organization.id);
   assertCanRegisterMatch(session, isAdmin, parsed.winnerId, parsed.loserId);
 
-  await prisma.$transaction(async (tx) => {
-    await assertAcceptedChallengeForMatch(tx, {
-      organizationId: organization.id,
-      challengeId: parsed.challengeId,
-      seasonId: parsed.seasonId,
-      winnerId: parsed.winnerId,
-      loserId: parsed.loserId
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await assertAcceptedChallengeForMatch(tx, {
+        organizationId: organization.id,
+        challengeId: parsed.challengeId,
+        seasonId: parsed.seasonId,
+        winnerId: parsed.winnerId,
+        loserId: parsed.loserId
+      });
 
-    const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
-    if (!season) throw new Error("That season does not exist.");
-    await registerMatchInTransaction(tx, parsed);
-  });
+      const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
+      if (!season) throw new UserFacingError("That season does not exist.");
+      await registerMatchInTransaction(tx, { ...parsed, requireChallengeStatus: ChallengeStatus.Accepted });
+    });
+  } catch (error) {
+    // A second submission of the same challenge loses the race on the unique
+    // match-per-challenge index rather than recording the result twice.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new UserFacingError(staleChallengeResultMessage);
+    }
+
+    throw error;
+  }
 
   refreshApp(organization.slug);
+}
+
+export type MatchResultFormState = {
+  error?: string;
+  /** The challenge moved on while the page was open, so its result entry is dead. */
+  stale?: boolean;
+};
+
+/**
+ * Form-state wrapper around {@link registerMatchResult} for inline result entry.
+ *
+ * Result entry lives next to the ladder, where an unhandled throw would replace
+ * the whole page with an error screen. Returning the failure instead lets the
+ * card show what happened and stop offering a result that the server has
+ * already rejected.
+ */
+export async function submitMatchResult(
+  _state: MatchResultFormState,
+  formData: FormData
+): Promise<MatchResultFormState> {
+  try {
+    await registerMatchResult(formData);
+
+    return {};
+  } catch (error) {
+    // redirect() and notFound() signal through thrown errors that Next must see.
+    if (isFrameworkError(error)) {
+      throw error;
+    }
+
+    const message = matchResultErrorMessage(error);
+
+    return { error: message, stale: isStaleChallengeResultMessage(message) };
+  }
+}
+
+function isFrameworkError(error: unknown) {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+
+  return typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND");
+}
+
+function matchResultErrorMessage(error: unknown) {
+  if (error instanceof z.ZodError) {
+    return "Check the winner, loser and result before saving.";
+  }
+
+  // Only messages written for the player leave the server; a database, driver or
+  // runtime failure would otherwise describe the implementation to the browser.
+  if (isUserFacingError(error)) {
+    return error.message;
+  }
+
+  return "The result could not be saved. Try again.";
 }
 
 function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {
@@ -472,7 +544,7 @@ function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winne
     return;
   }
 
-  throw new Error("Only admins or match participants can register match results.");
+  throw new UserFacingError("Only admins or match participants can register match results.");
 }
 
 async function assertAcceptedChallengeForMatch(
@@ -497,7 +569,7 @@ async function assertAcceptedChallengeForMatch(
   });
 
   if (!challenge || challenge.status !== ChallengeStatus.Accepted) {
-    throw new Error("Only accepted challenges can be attached to match results.");
+    throw new UserFacingError(unreportableChallengeMessage);
   }
 
   const matchPlayerIds = new Set([input.winnerId, input.loserId]);
@@ -506,7 +578,7 @@ async function assertAcceptedChallengeForMatch(
     matchPlayerIds.size === challengePlayerIds.size && [...matchPlayerIds].every((playerId) => challengePlayerIds.has(playerId));
 
   if (challenge.organizationId !== input.organizationId || challenge.seasonId !== input.seasonId || !matchesChallengePlayers) {
-    throw new Error("Match results must use the same season and players as the accepted challenge.");
+    throw new UserFacingError("Match results must use the same season and players as the accepted challenge.");
   }
 }
 
@@ -519,6 +591,8 @@ async function registerMatchInTransaction(
     loserSets: number;
     playedAt: Date;
     challengeId?: string;
+    /** Set when the caller has already read the challenge and needs that read to still hold. */
+    requireChallengeStatus?: ChallengeStatus;
   }
 ) {
   const [winner, loser] = await Promise.all([
@@ -531,11 +605,11 @@ async function registerMatchInTransaction(
   ]);
 
   if (!winner || !loser) {
-    throw new Error("Both match players must be joined to the season.");
+    throw new UserFacingError("Both match players must be joined to the season.");
   }
 
   if (winner.organizationId !== loser.organizationId) {
-    throw new Error("Match players must belong to the same organization.");
+    throw new UserFacingError("Match players must belong to the same organization.");
   }
 
   const score = calculateMatchScore({
@@ -573,13 +647,22 @@ async function registerMatchInTransaction(
   });
 
   if (input.challengeId) {
-    await tx.challenge.update({
-      where: { id: input.challengeId },
+    // Conditional so a challenge another participant closed in the meantime
+    // rolls the whole result back instead of overwriting the newer state.
+    const completed = await tx.challenge.updateMany({
+      where: {
+        id: input.challengeId,
+        ...(input.requireChallengeStatus ? { status: input.requireChallengeStatus } : {})
+      },
       data: {
         status: ChallengeStatus.Completed,
         completedAt: input.playedAt
       }
     });
+
+    if (completed.count === 0) {
+      throw new UserFacingError(staleChallengeResultMessage);
+    }
   }
 
   await recalculateRanks(tx, input.seasonId);

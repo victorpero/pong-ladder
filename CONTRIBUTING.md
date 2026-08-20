@@ -145,7 +145,23 @@ Review generated SQL before committing it. Include rollout, backfill, and compat
 4. Promote `dev` to `main` through a pull request.
 5. Merge only after all required checks pass; do not push directly to `main`.
 
-Merges to `main` publish the production container image. Contributors do not need access to the production environment to develop or test application changes.
+Merges to `main` publish the GitHub Release and then the production container image. Contributors do not need access to the production environment to develop or test application changes.
+
+## Releases
+
+Every user-visible version comes from one file, `src/data/releases.json`. It feeds the version in the application footer, the in-app **What's new** page, the published GitHub Release, and the `version` field in `package.json`. Notes are written in every supported language, like the interface dictionaries.
+
+When a change is worth telling players about, add or extend the top entry in that file and run:
+
+```bash
+npm run release:sync
+```
+
+Promoting `dev` to `main` is the release. The release workflow tags the promoted commit, publishes the matching GitHub Release, and only then builds and pushes the production container image, so a deployed version always has a tag and a release behind it. There is no manual tagging step, and merges into `dev` never publish either.
+
+Every promotion to `main` must therefore add a release entry. Promoting a version that was already released at another commit fails the workflow instead of deploying code the published tag does not describe.
+
+The full process, the rules the release data must satisfy, and how to write player-facing notes are documented in [docs/releases.md](docs/releases.md).
 
 ## Deployment configuration
 

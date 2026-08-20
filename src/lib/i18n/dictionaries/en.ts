@@ -23,7 +23,8 @@ export const en = {
     verifyEmailTitle: "Verify email",
     forgotPasswordTitle: "Forgot password",
     resetPasswordTitle: "Reset password",
-    invitationTitle: "Organization invitation"
+    invitationTitle: "Organization invitation",
+    changelogTitle: "What's new"
   },
 
   common: {
@@ -58,6 +59,23 @@ export const en = {
     optionLabel: "Show Pong Ladder in {language}"
   },
 
+  changelog: {
+    label: "What's new",
+    intro: "Everything that changed in Pong Ladder, newest first.",
+    released: "Released {date}",
+    backToOrganizations: "Back to organizations",
+    backToLadder: "Back to the ladder",
+    groups: {
+      new: "New",
+      improved: "Improved",
+      fixed: "Fixed"
+    }
+  },
+  footer: {
+    whatsNew: "What's new",
+    newBadge: "New",
+    developmentBuild: "dev"
+  },
   nav: {
     primary: "Primary navigation",
     account: "Account navigation",
@@ -65,7 +83,6 @@ export const en = {
     matches: "Matches",
     challenges: "Challenges",
     teams: "Teams",
-    players: "Players",
     rules: "Rules",
     invite: "Invite",
     admin: "Admin",
@@ -100,6 +117,7 @@ export const en = {
     label: "Ladder",
     standingsHeading: "Current standings",
     challengePlayer: "Challenge player",
+    playerDirectory: "Player directory",
     emptyTitle: "The ladder is empty",
     emptyBody: "Add players and join them to the active season.",
     rivalBadge: "Rival",
@@ -114,6 +132,19 @@ export const en = {
     },
     noSeasonTitle: "No active season",
     noSeasonBody: "The current fixed season could not be loaded."
+  },
+
+  activeChallenges: {
+    label: "Your active challenges",
+    heading: "Matches to report",
+    acceptedOn: "Accepted {date}",
+    staleBadge: "No longer open",
+    enterResult: "Enter result",
+    closeResult: "Close result entry",
+    refreshLadder: "Refresh ladder",
+    viewerWon: "I won",
+    opponentWon: "{opponent} won",
+    savingResult: "Saving result..."
   },
 
   seasonJoin: {
@@ -235,6 +266,8 @@ export const en = {
     challengeHeading: "Challenge rules",
     challengeItems: {
       window: "A player may challenge anyone within 3 ladder positions, whether above or below them.",
+      tiedPositions:
+        "Players on the same number of points share one ladder position, so they all have the same challenge options and may also challenge each other.",
       declineOnce: "A player may only decline a challenge once.",
       secondDecline: "If the same player declines a second challenge, the match is counted as a 3-0 loss for that player."
     },

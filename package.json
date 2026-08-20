@@ -1,6 +1,6 @@
 {
   "name": "pong-ladder",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=18.17.0"
@@ -13,6 +13,10 @@
     "typecheck": "tsc --noEmit",
     "email:preview": "tsx scripts/preview-emails.ts",
     "icons:generate": "tsx scripts/generate-app-icons.ts",
+    "release:version": "tsx scripts/release.ts version",
+    "release:notes": "tsx scripts/release.ts notes",
+    "release:sync": "tsx scripts/release.ts sync",
+    "release:check": "tsx scripts/release.ts check",
     "test": "vitest run --config config/vitest.config.ts",
     "test:watch": "vitest --config config/vitest.config.ts",
     "prisma:generate": "prisma generate",

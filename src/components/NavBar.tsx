@@ -10,9 +10,8 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { OrganizationSwitcher } from "@/components/OrganizationSwitcher";
 import { logout } from "@/lib/auth-actions";
 import { useDictionary, useLocale } from "@/lib/i18n/locale-context";
+import { organizationNavigationSections } from "@/lib/navigation";
 import { organizationPath, organizationSlugFromPath, organizationsPath } from "@/lib/organization-paths";
-
-const sections = ["ladder", "matches", "challenges", "teams", "players", "rules"] as const;
 
 type SessionState = {
   isAdmin: boolean;
@@ -99,7 +98,7 @@ export function NavBar() {
         </div>
         <div className="flex items-center gap-3">
           <nav aria-label={dictionary.nav.primary} className="flex flex-1 gap-2 overflow-x-auto pb-1">
-            {sections.map((section) => {
+            {organizationNavigationSections.map((section) => {
               const href = organizationPath(locale, organizationSlug, section);
 
               return (

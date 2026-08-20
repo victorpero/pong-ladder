@@ -1,7 +1,8 @@
 import { ChallengeStatus, type Prisma } from "@prisma/client";
+import { maxChallengeDistance } from "@/lib/ladder-positions";
 
 export type ChallengeRulePlayer = {
-  currentRank: number;
+  effectivePosition: number;
 };
 
 /** States that represent an ongoing matchup and therefore block a second challenge. */
@@ -56,17 +57,35 @@ export function getActiveChallengeOpponentIds(
   return Array.from(opponentIds);
 }
 
+/**
+ * Distance is measured between effective positions, so players level on points
+ * share one position and get the same reach. A distance of zero is a matchup
+ * between tied players; callers exclude the challenger from their own targets.
+ */
 export function canChallengePlayer(challenger: ChallengeRulePlayer, challenged: ChallengeRulePlayer) {
-  const rankDistance = Math.abs(challenger.currentRank - challenged.currentRank);
+  const positionDistance = Math.abs(challenger.effectivePosition - challenged.effectivePosition);
 
-  return rankDistance >= 1 && rankDistance <= 3;
+  return positionDistance <= maxChallengeDistance;
 }
 
 export const challengeWindowMessage =
-  "A player may only challenge someone within 3 ladder positions, above or below them.";
+  "A player may only challenge someone within 3 ladder positions, above or below them. Players level on points share the same position.";
 
 export const duplicateActiveChallengeMessage =
   "You already have an active challenge with this player. Finish it before starting another.";
+
+export const staleChallengeResultMessage =
+  "That challenge is no longer waiting for a result. Refresh the ladder to see its current state.";
+
+export const unreportableChallengeMessage = "Only accepted challenges can be attached to match results.";
+
+/**
+ * Both messages mean the same thing to the player: the challenge moved on while
+ * their page was open, so the result entry they are looking at is stale.
+ */
+export function isStaleChallengeResultMessage(message: string) {
+  return message === staleChallengeResultMessage || message === unreportableChallengeMessage;
+}
 
 export function splitActiveChallengeTargets<T extends { userId: string }>(targets: T[], activeOpponentIds: Iterable<string>) {
   const blockedOpponents = new Set(activeOpponentIds);
