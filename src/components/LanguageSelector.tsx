@@ -85,7 +85,6 @@ export function LanguageSelector({ className = "" }: { className?: string }) {
                   role="menuitem"
                   aria-current={isCurrent ? "true" : undefined}
                   aria-label={t(dictionary.language.optionLabel, { language: LOCALE_NATIVE_NAMES[option] })}
-                  onClick={() => setIsOpen(false)}
                   className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-court-500 ${
                     isCurrent ? "text-court-700" : "text-ink"
                   }`}
