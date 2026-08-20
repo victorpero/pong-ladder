@@ -12,6 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "email:preview": "tsx scripts/preview-emails.ts",
+    "icons:generate": "tsx scripts/generate-app-icons.ts",
     "test": "vitest run --config config/vitest.config.ts",
     "test:watch": "vitest --config config/vitest.config.ts",
     "prisma:generate": "prisma generate",

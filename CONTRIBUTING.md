@@ -106,6 +106,16 @@ When you add interface text:
 
 Server actions read the active language from the locale cookie through `getRequestDictionary()`, which middleware keeps in step with the page the reader is on.
 
+## Application icons
+
+The favicon, Apple touch icon, and PWA manifest icons are all generated from the single brand asset `public/images/logo.png` — the same mark the in-app header renders. After changing that file, regenerate the set and commit the result:
+
+```bash
+npm run icons:generate
+```
+
+`tests/app-icons.test.ts` fails when the committed icons no longer match the source logo. See [docs/app-icons.md](docs/app-icons.md) for the framing rules and for how to validate a fresh icon on iOS and Chromium without hitting a cached one.
+
 ## Database changes
 
 Create Prisma migrations with a descriptive name and commit the generated migration alongside the schema change:
