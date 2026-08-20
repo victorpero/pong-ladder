@@ -99,7 +99,7 @@ export default async function OrganizationAccountPage({
         <div className="grid grid-cols-3 gap-3">
           <StatCard
             label={dictionary.common.rank}
-            value={entry ? `#${entry.currentRank}` : dictionary.common.notAvailable}
+            value={entry ? `#${entry.effectivePosition}` : dictionary.common.notAvailable}
           />
           <StatCard label={dictionary.common.points} value={formatNumber(entry?.points ?? 0, locale)} />
           <StatCard label={dictionary.common.record} value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />

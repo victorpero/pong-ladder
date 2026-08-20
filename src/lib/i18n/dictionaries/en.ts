@@ -235,6 +235,8 @@ export const en = {
     challengeHeading: "Challenge rules",
     challengeItems: {
       window: "A player may challenge anyone within 3 ladder positions, whether above or below them.",
+      tiedPositions:
+        "Players on the same number of points share one ladder position, so they all have the same challenge options and may also challenge each other.",
       declineOnce: "A player may only decline a challenge once.",
       secondDecline: "If the same player declines a second challenge, the match is counted as a 3-0 loss for that player."
     },

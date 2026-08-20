@@ -109,8 +109,8 @@ export default async function OrganizationPlayerPage({
   );
   const challengeOptions = availableChallengeTargets.map((item) => ({
     id: item.userId,
-    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.currentRank})`,
-    detail: t(dictionary.matches.playerRankDetail, { rank: item.currentRank, points: item.points })
+    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.effectivePosition})`,
+    detail: t(dictionary.matches.playerRankDetail, { rank: item.effectivePosition, points: item.points })
   }));
   const defaultChallengeTargetId = availableChallengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
 
@@ -119,7 +119,7 @@ export default async function OrganizationPlayerPage({
       <section className="mb-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr]">
         <StatCard
           label={dictionary.common.rank}
-          value={entry ? `#${entry.currentRank}` : dictionary.common.notAvailable}
+          value={entry ? `#${entry.effectivePosition}` : dictionary.common.notAvailable}
         />
         <StatCard label={dictionary.common.points} value={formatNumber(entry?.points ?? 0, locale)} />
         <StatCard label={dictionary.common.record} value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
