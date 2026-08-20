@@ -58,17 +58,14 @@ export type TeamStanding = TeamStandingTeam & {
   losses: number;
   matchesPlayed: number;
   players: number;
-  currentRank: number;
 };
-
-type TeamTotals = Omit<TeamStanding, "currentRank">;
 
 export function isInternalGame(match: Pick<TeamStandingMatch, "winnerTeamId" | "loserTeamId">) {
   return match.winnerTeamId !== null && match.winnerTeamId === match.loserTeamId;
 }
 
 export function buildTeamStandings(input: TeamStandingsInput): TeamStanding[] {
-  const teams = new Map<string, TeamTotals>(
+  const teams = new Map<string, TeamStanding>(
     input.teams.map((team) => [
       team.id,
       { id: team.id, name: team.name, points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 0 }
@@ -106,11 +103,9 @@ export function buildTeamStandings(input: TeamStandingsInput): TeamStanding[] {
     }
   }
 
+  // Display order only. Callers attach the shared ladder position, so teams level
+  // on points hold the same place.
   return Array.from(teams.values())
     .filter((team) => team.players > 0 || team.matchesPlayed > 0)
-    .sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
-    .map((team, index) => ({
-      ...team,
-      currentRank: index + 1
-    }));
+    .sort((left, right) => right.points - left.points || left.name.localeCompare(right.name));
 }

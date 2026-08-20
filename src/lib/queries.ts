@@ -94,11 +94,13 @@ export async function getTeamLadder(seasonId: string) {
     })
   ]);
 
-  return buildTeamStandings({
-    teams,
-    players: players.map((player) => ({ userId: player.userId, teamId: player.membership.teamId })),
-    matches
-  });
+  return withEffectivePositions(
+    buildTeamStandings({
+      teams,
+      players: players.map((player) => ({ userId: player.userId, teamId: player.membership.teamId })),
+      matches
+    })
+  );
 }
 
 /**

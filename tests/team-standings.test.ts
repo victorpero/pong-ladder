@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { withEffectivePositions } from "@/lib/ladder-positions";
 import { calculateMatchScore } from "@/lib/scoring";
 import {
   buildTeamStandings,
@@ -82,7 +83,7 @@ describe("buildTeamStandings", () => {
     play.play("a", "b", 2);
 
     expect(play.standings()).toEqual([
-      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 2, currentRank: 1 }
+      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 2 }
     ]);
   });
 
@@ -140,7 +141,7 @@ describe("buildTeamStandings", () => {
     play.play("solo", "other", 0);
 
     expect(play.standings()).toEqual([
-      { id: "team-red", name: "Red", points: 3, wins: 1, losses: 0, matchesPlayed: 1, players: 1, currentRank: 1 }
+      { id: "team-red", name: "Red", points: 3, wins: 1, losses: 0, matchesPlayed: 1, players: 1 }
     ]);
   });
 
@@ -163,21 +164,39 @@ describe("buildTeamStandings", () => {
     play.leaveSeason("benched");
 
     expect(play.standings()).toEqual([
-      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 1, currentRank: 1 }
+      { id: "team-red", name: "Red", points: 0, wins: 0, losses: 0, matchesPlayed: 0, players: 1 }
     ]);
   });
 
-  it("ranks teams by points and falls back to the team name", () => {
+  it("orders teams by points and falls back to the team name", () => {
     const play = season([
       ["a", red],
       ["c", blue]
     ]);
     play.play("c", "a", 2);
 
-    expect(play.standings().map((team) => [team.name, team.currentRank])).toEqual([
-      ["Blue", 1],
-      ["Red", 2]
+    // Positions themselves come from the shared ladder helper, which lets teams
+    // level on points hold the same place.
+    expect(play.standings().map((team) => team.name)).toEqual(["Blue", "Red"]);
+  });
+
+  it("keeps teams level on points next to each other", () => {
+    const play = season([
+      ["a", red],
+      ["b", red],
+      ["c", blue],
+      ["d", blue]
     ]);
+    play.play("a", "c", 2);
+    play.play("d", "b", 2);
+
+    const standings = play.standings();
+
+    expect(standings.map((team) => [team.name, team.points])).toEqual([
+      ["Blue", 5],
+      ["Red", 5]
+    ]);
+    expect(withEffectivePositions(standings).map((team) => team.effectivePosition)).toEqual([1, 1]);
   });
 });
 
