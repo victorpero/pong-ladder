@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 type RateLimitEntry = {
   count: number;
@@ -14,7 +15,7 @@ const globalForRateLimit = globalThis as typeof globalThis & {
 const store = globalForRateLimit.pongLadderRateLimits ?? new Map<string, RateLimitEntry>();
 globalForRateLimit.pongLadderRateLimits = store;
 
-export class RateLimitError extends Error {
+export class RateLimitError extends UserFacingError {
   constructor() {
     super("Too many attempts. Please wait a bit and try again.");
   }

@@ -34,6 +34,8 @@ const state = vi.hoisted(() => ({
   seasonPlayers: [] as SeasonPlayerRow[],
   matches: [] as MatchRow[],
   rankRecalculations: [] as string[],
+  /** Stands in for a driver or database failure that must not reach the browser. */
+  failWithUnexpectedError: false,
   /** Stands in for another participant closing the challenge mid-transaction. */
   onBeforeChallengeUpdate: null as (() => void) | null
 }));
@@ -141,6 +143,10 @@ vi.mock("@/lib/prisma", () => {
     },
     match: {
       create: async ({ data }: { data: MatchRow }) => {
+        if (state.failWithUnexpectedError) {
+          throw new Error(unexpectedDatabaseFailure);
+        }
+
         // Models the unique match-per-challenge index.
         if (data.challengeId && state.matches.some((match) => match.challengeId === data.challengeId)) {
           throw uniqueViolation();
@@ -172,6 +178,9 @@ vi.mock("@/lib/prisma", () => {
 
   return { prisma: db };
 });
+
+const unexpectedDatabaseFailure =
+  'Invalid `prisma.match.create()` invocation: connect ECONNREFUSED 127.0.0.1:5432';
 
 const { registerMatchResult, submitMatchResult } = await import("@/lib/actions");
 const { staleChallengeResultMessage, unreportableChallengeMessage } = await import("@/lib/challenge-rules");
@@ -220,6 +229,7 @@ beforeEach(() => {
   ];
   state.matches = [];
   state.rankRecalculations = [];
+  state.failWithUnexpectedError = false;
   state.onBeforeChallengeUpdate = null;
 });
 
@@ -385,6 +395,23 @@ describe("submitMatchResult form state", () => {
       error: "Check the winner, loser and result before saving.",
       stale: false
     });
+  });
+
+  it("hides an unexpected database failure behind a generic message", async () => {
+    state.failWithUnexpectedError = true;
+
+    const result = await submitMatchResult({}, resultForm());
+
+    expect(result).toEqual({ error: "The result could not be saved. Try again.", stale: false });
+    expect(result.error).not.toContain("prisma");
+    expect(result.error).not.toContain("ECONNREFUSED");
+    expect(state.matches).toEqual([]);
+  });
+
+  it("still lets the unexpected failure reach the server logs unchanged", async () => {
+    state.failWithUnexpectedError = true;
+
+    await expect(registerMatchResult(resultForm())).rejects.toThrow(unexpectedDatabaseFailure);
   });
 
   it("rethrows the framework redirect instead of rendering it as a form error", async () => {

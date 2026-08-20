@@ -24,6 +24,7 @@ import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
 import { revalidateOrganizationSections } from "@/lib/revalidation";
+import { UserFacingError, isUserFacingError } from "@/lib/user-facing-error";
 
 const playerSchema = z.object({
   username: z.string().trim().min(2).max(30),
@@ -445,7 +446,7 @@ export async function registerMatchResult(formData: FormData) {
   });
 
   if (parsed.winnerId === parsed.loserId) {
-    throw new Error("Winner and loser must be different players.");
+    throw new UserFacingError("Winner and loser must be different players.");
   }
 
   validateBestOfFiveResult(3, parsed.loserSets);
@@ -464,14 +465,14 @@ export async function registerMatchResult(formData: FormData) {
       });
 
       const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
-      if (!season) throw new Error("That season does not exist.");
+      if (!season) throw new UserFacingError("That season does not exist.");
       await registerMatchInTransaction(tx, { ...parsed, requireChallengeStatus: ChallengeStatus.Accepted });
     });
   } catch (error) {
     // A second submission of the same challenge loses the race on the unique
     // match-per-challenge index rather than recording the result twice.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error(staleChallengeResultMessage);
+      throw new UserFacingError(staleChallengeResultMessage);
     }
 
     throw error;
@@ -525,12 +526,13 @@ function matchResultErrorMessage(error: unknown) {
     return "Check the winner, loser and result before saving.";
   }
 
-  // Rate-limit and rule violations already carry a message meant for the player.
-  if (error instanceof Error) {
+  // Only messages written for the player leave the server; a database, driver or
+  // runtime failure would otherwise describe the implementation to the browser.
+  if (isUserFacingError(error)) {
     return error.message;
   }
 
-  return "The result could not be saved.";
+  return "The result could not be saved. Try again.";
 }
 
 function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {
@@ -538,7 +540,7 @@ function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winne
     return;
   }
 
-  throw new Error("Only admins or match participants can register match results.");
+  throw new UserFacingError("Only admins or match participants can register match results.");
 }
 
 async function assertAcceptedChallengeForMatch(
@@ -563,7 +565,7 @@ async function assertAcceptedChallengeForMatch(
   });
 
   if (!challenge || challenge.status !== ChallengeStatus.Accepted) {
-    throw new Error(unreportableChallengeMessage);
+    throw new UserFacingError(unreportableChallengeMessage);
   }
 
   const matchPlayerIds = new Set([input.winnerId, input.loserId]);
@@ -572,7 +574,7 @@ async function assertAcceptedChallengeForMatch(
     matchPlayerIds.size === challengePlayerIds.size && [...matchPlayerIds].every((playerId) => challengePlayerIds.has(playerId));
 
   if (challenge.organizationId !== input.organizationId || challenge.seasonId !== input.seasonId || !matchesChallengePlayers) {
-    throw new Error("Match results must use the same season and players as the accepted challenge.");
+    throw new UserFacingError("Match results must use the same season and players as the accepted challenge.");
   }
 }
 
@@ -599,11 +601,11 @@ async function registerMatchInTransaction(
   ]);
 
   if (!winner || !loser) {
-    throw new Error("Both match players must be joined to the season.");
+    throw new UserFacingError("Both match players must be joined to the season.");
   }
 
   if (winner.organizationId !== loser.organizationId) {
-    throw new Error("Match players must belong to the same organization.");
+    throw new UserFacingError("Match players must belong to the same organization.");
   }
 
   const score = calculateMatchScore({
@@ -655,7 +657,7 @@ async function registerMatchInTransaction(
     });
 
     if (completed.count === 0) {
-      throw new Error(staleChallengeResultMessage);
+      throw new UserFacingError(staleChallengeResultMessage);
     }
   }
 
