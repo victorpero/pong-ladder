@@ -273,6 +273,7 @@ describe("createChallenge duplicate prevention", () => {
 
     await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
     expect(state.challenges).toHaveLength(0);
+    expect(state.notified).toEqual([]);
   });
 });
 
@@ -356,6 +357,7 @@ describe("createChallenge with tied points", () => {
     expect(state.challenges).toHaveLength(1);
 
     state.challenges = [];
+    state.notified = [];
     // The other two win their way past, pushing the challenger down to fifth.
     state.ladder = ladderOf([30, 24, 18, 12, 0], { rival: 30, me: 0 });
 
