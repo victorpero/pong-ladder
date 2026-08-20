@@ -23,7 +23,8 @@ export const en = {
     verifyEmailTitle: "Verify email",
     forgotPasswordTitle: "Forgot password",
     resetPasswordTitle: "Reset password",
-    invitationTitle: "Organization invitation"
+    invitationTitle: "Organization invitation",
+    changelogTitle: "What's new"
   },
 
   common: {
@@ -58,6 +59,23 @@ export const en = {
     optionLabel: "Show Pong Ladder in {language}"
   },
 
+  changelog: {
+    label: "What's new",
+    intro: "Everything that changed in Pong Ladder, newest first.",
+    released: "Released {date}",
+    backToOrganizations: "Back to organizations",
+    backToLadder: "Back to the ladder",
+    groups: {
+      new: "New",
+      improved: "Improved",
+      fixed: "Fixed"
+    }
+  },
+  footer: {
+    whatsNew: "What's new",
+    newBadge: "New",
+    developmentBuild: "dev"
+  },
   nav: {
     primary: "Primary navigation",
     account: "Account navigation",
@@ -65,7 +83,6 @@ export const en = {
     matches: "Matches",
     challenges: "Challenges",
     teams: "Teams",
-    players: "Players",
     rules: "Rules",
     invite: "Invite",
     admin: "Admin",
@@ -100,6 +117,7 @@ export const en = {
     label: "Ladder",
     standingsHeading: "Current standings",
     challengePlayer: "Challenge player",
+    playerDirectory: "Player directory",
     emptyTitle: "The ladder is empty",
     emptyBody: "Add players and join them to the active season.",
     rivalBadge: "Rival",
@@ -113,7 +131,32 @@ export const en = {
       other: "{count} players"
     },
     noSeasonTitle: "No active season",
-    noSeasonBody: "The current fixed season could not be loaded."
+    noSeasonBody: "The current fixed season could not be loaded.",
+    challengeControl: {
+      challenge: "Challenge",
+      challenging: "Sending...",
+      challengeAria: "Challenge {player}",
+      pending: "Pending",
+      pendingWaiting: " — waiting for {player} to respond",
+      accept: "Accept",
+      accepting: "Accepting...",
+      acceptAria: "Accept the challenge from {player}",
+      active: "Active",
+      activeAria: "Register the match against {player}"
+    }
+  },
+
+  activeChallenges: {
+    label: "Your active challenges",
+    heading: "Matches to report",
+    acceptedOn: "Accepted {date}",
+    staleBadge: "No longer open",
+    enterResult: "Enter result",
+    closeResult: "Close result entry",
+    refreshLadder: "Refresh ladder",
+    viewerWon: "I won",
+    opponentWon: "{opponent} won",
+    savingResult: "Saving result..."
   },
 
   seasonJoin: {
@@ -718,6 +761,15 @@ export const en = {
     rateLimited: "Too many attempts. Please wait a bit and try again.",
     genericError: "Something went wrong. Please try again.",
     checkForm: "Check the form and try again.",
+    challenge: {
+      window: "A player may only challenge someone within 3 ladder positions, above or below them. Players level on points share the same position.",
+      duplicate: "You already have an active challenge with this player. Finish it before starting another.",
+      self: "Players cannot challenge themselves.",
+      seasonMissing: "That season does not exist.",
+      notInSeason: "Both players must be joined to the season.",
+      stale: "That challenge is no longer waiting for you. Reload the ladder for the current state.",
+      failed: "That challenge could not be created. Reload the ladder and try again."
+    },
     auth: {
       identifierRequired: "Enter your email or username.",
       passwordLength: "Password must be at least 8 characters.",

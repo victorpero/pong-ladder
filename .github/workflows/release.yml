@@ -1,0 +1,128 @@
+name: Release
+
+# Promotion to main is the only production path, and it is a single sequence:
+# the GitHub Release is published first, and the production image is built only
+# once that release exists. Neither half can succeed on its own, so production
+# can never report a version that has no matching tag and release.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    # A manually dispatched run can select any ref. Never release anything else.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          # Tags are needed to tell a new version from one already released.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve the promoted version
+        id: resolve
+        run: |
+          set -euo pipefail
+          version="$(npm run --silent release:version)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
+
+      - name: Verify package metadata matches the release
+        run: npm run release:check
+
+      - name: Generate the release body
+        run: npm run --silent release:notes > release-body.md
+
+      - name: Publish the tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+
+          # Every production promotion has to carry its own version. The tag for
+          # that version must resolve to exactly this commit, because the image
+          # below is published as v${RELEASE_VERSION}: if the tag named an
+          # earlier commit, the tag, the release, and the deployed image would
+          # describe three different artifacts.
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            tagged_sha="$(git rev-list -n 1 "refs/tags/${tag}")"
+
+            if [ "${tagged_sha}" != "${GITHUB_SHA}" ]; then
+              echo "::error::Version ${RELEASE_VERSION} was already released at ${tagged_sha}, but this promotion is ${GITHUB_SHA}. Add a new entry to src/data/releases.json for this release."
+              exit 1
+            fi
+
+            # Re-running the workflow for the same commit must not fail.
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              echo "Release ${tag} is already published for this commit."
+              exit 0
+            fi
+
+            # A tag without a release means an earlier run stopped part way.
+            echo "Tag ${tag} exists for this commit without a release; publishing it."
+          fi
+
+          gh release create "${tag}" \
+            --target "${GITHUB_SHA}" \
+            --title "Pong Ladder v${RELEASE_VERSION}" \
+            --notes-file release-body.md
+
+  publish:
+    name: Publish container image
+    # The production image is gated on the release above. If the release cannot
+    # be published, no image is pushed and production keeps serving the previous
+    # version rather than one GitHub does not advertise.
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: APP_ENABLE_HTTPS_HEADERS=true
+          # The Talos production node is amd64. Building only this native
+          # platform avoids the unreliable ARM emulation path on Actions.
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:v${{ needs.release.outputs.version }}

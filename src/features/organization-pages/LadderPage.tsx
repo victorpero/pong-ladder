@@ -1,16 +1,20 @@
 import Link from "next/link";
+import { ActiveChallengeCards, type ActiveChallengeCard } from "@/components/ActiveChallengeCards";
 import { EmptyState } from "@/components/EmptyState";
 import { JoinSeasonToggle } from "@/components/JoinSeasonToggle";
+import { LadderChallengeControl } from "@/components/LadderChallengeControl";
 import { StatCard } from "@/components/StatCard";
+import { selectReportableChallenges } from "@/lib/active-challenges";
 import { requireOrganizationUser } from "@/lib/authz";
 import { getPublicPlayerNames } from "@/lib/display-name";
 import { getSeasonLabel } from "@/lib/fixed-seasons";
-import { formatDate, formatNumber } from "@/lib/format";
+import { compactDate, formatDate, formatNumber } from "@/lib/format";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { plural, t } from "@/lib/i18n/format";
+import { getLadderChallengeStates, hasLadderChallengeControl } from "@/lib/ladder-challenge-state";
 import { getRival } from "@/lib/player-stats";
-import { getActiveSeason, getLadder, getPlayerMatches, getTeamLadder } from "@/lib/queries";
+import { getActiveChallengesForPlayer, getActiveSeason, getLadder, getPlayerMatches, getTeamLadder } from "@/lib/queries";
 import { shouldShowSeasonJoinPrompt } from "@/lib/season-join-prompt";
 import { getTeamDisplayName } from "@/lib/team-display";
 import { organizationPath } from "@/lib/organization-paths";
@@ -37,13 +41,25 @@ export default async function OrganizationLadderPage({
     );
   }
 
-  const [ladder, teamLadder, viewerMatches] = await Promise.all([
+  const [ladder, teamLadder, viewerMatches, viewerChallenges] = await Promise.all([
     getLadder(season.id),
     getTeamLadder(season.id),
-    session ? getPlayerMatches(session.sub, organization.id) : []
+    session ? getPlayerMatches(session.sub, organization.id) : [],
+    session ? getActiveChallengesForPlayer(organization.id, season.id, session.sub) : []
   ]);
   const currentPlayer = session ? ladder.find((entry) => entry.userId === session.sub) : null;
-  const publicNames = getPublicPlayerNames(ladder.map((entry) => entry.user));
+  const publicNames = getPublicPlayerNames([
+    ...ladder.map((entry) => entry.user),
+    ...viewerChallenges.flatMap((challenge) => [challenge.challenger, challenge.challenged])
+  ]);
+  // One derivation for the whole ladder, from the same rules the server applies
+  // when a challenge is actually created.
+  const challengeStates = getLadderChallengeStates({
+    viewerId: session?.sub ?? null,
+    ladder,
+    challenges: viewerChallenges
+  });
+  const matchesPath = organizationPath(locale, organizationSlug, "matches");
   // Contextual to whoever is signed in, so two players see the tag on different rows.
   const rivalId = session ? getRival(viewerMatches, session.sub)?.opponentId ?? null : null;
   // Kept in step with the toggle so the wrapper does not leave its margin behind.
@@ -53,32 +69,26 @@ export default async function OrganizationLadderPage({
   });
   const daysUntilNextSeason = getDaysUntilNextSeason(season.endsAt ?? season.startsAt);
   const seasonLabel = getSeasonLabel(season.year, season.seasonNumber);
+  const activeChallengeCards = session
+    ? selectReportableChallenges(viewerChallenges, session.sub).map((challenge) =>
+        toActiveChallengeCard(challenge, session.sub, ladder, publicNames, {
+          acceptedOn: (date) => t(dictionary.activeChallenges.acceptedOn, { date: compactDate(date, locale) }),
+          rankDetail: (rank, points) => t(dictionary.matches.playerRankDetail, { rank, points })
+        })
+      )
+    : [];
 
   return (
     <main className="page-shell">
-      <section className="mb-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <div className="section-band">
-          <p className="label">{dictionary.ladder.activeSeasonLabel}</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-4xl">
-            {t(dictionary.ladder.seasonHeading, { season: seasonLabel })}
-          </h1>
-          <p className="mt-2 text-sm font-semibold text-muted">
-            {t(dictionary.ladder.seasonRange, {
-              start: formatDate(season.startsAt, locale),
-              end: formatDate(season.endsAt ?? season.startsAt, locale)
-            })}
-          </p>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{dictionary.ladder.intro}</p>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard label={dictionary.ladder.players} value={formatNumber(ladder.length, locale)} />
-          <StatCard label={dictionary.ladder.teams} value={formatNumber(teamLadder.length, locale)} />
-          <StatCard
-            label={dictionary.ladder.daysLeft}
-            value={plural(daysUntilNextSeason, dictionary.ladder.dayCount)}
-          />
-        </div>
-      </section>
+      {session ? (
+        <ActiveChallengeCards
+          challenges={activeChallengeCards}
+          defaultPlayedAt={new Date().toISOString().slice(0, 10)}
+          organizationSlug={organizationSlug}
+          seasonId={season.id}
+          viewerId={session.sub}
+        />
+      ) : null}
 
       {showJoinPrompt ? (
         <section className="mb-6">
@@ -91,48 +101,84 @@ export default async function OrganizationLadderPage({
       ) : null}
 
       <section className="section-band">
-        <div className="mb-4 flex items-end justify-between gap-4">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="label">{dictionary.ladder.label}</p>
-            <h2 className="mt-1 text-2xl font-black">{dictionary.ladder.standingsHeading}</h2>
+            <p className="label">
+              {dictionary.ladder.label} · {t(dictionary.ladder.seasonHeading, { season: seasonLabel })}
+            </p>
+            <h1 className="mt-1 text-3xl font-black sm:text-4xl">{dictionary.ladder.standingsHeading}</h1>
           </div>
-          <Link className="button" href={organizationPath(locale, organizationSlug, "challenges")}>
-            {dictionary.ladder.challengePlayer}
-          </Link>
+          {/* The removed Players tab lives on here: the directory also covers members who have not joined the season. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link className="button-secondary" href={organizationPath(locale, organizationSlug, "players")}>
+              {dictionary.ladder.playerDirectory}
+            </Link>
+            <Link className="button" href={organizationPath(locale, organizationSlug, "challenges")}>
+              {dictionary.ladder.challengePlayer}
+            </Link>
+          </div>
         </div>
 
         {ladder.length === 0 ? (
           <EmptyState title={dictionary.ladder.emptyTitle} body={dictionary.ladder.emptyBody} />
         ) : (
           <div className="grid gap-3">
-            {ladder.map((entry, index) => (
-              <Link
-                href={organizationPath(locale, organizationSlug, "players", entry.userId)}
-                key={entry.id}
-                className={`rank-in grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(entry.effectivePosition).row}`}
-                style={{ animationDelay: `${index * 35}ms` }}
-              >
-                <div>
-                  <p className="stat-label">{dictionary.common.rank}</p>
-                  <RankBadge rank={entry.effectivePosition} />
+            {ladder.map((entry, index) => {
+              const playerName = publicNames.get(entry.userId) ?? entry.user.username;
+              const challengeState = challengeStates.get(entry.userId) ?? { kind: "unavailable" as const };
+              const showChallengeControl = hasLadderChallengeControl(challengeState);
+
+              return (
+                <div
+                  key={entry.id}
+                  className={`rank-in relative grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] sm:pr-4 lg:grid-cols-[72px_1fr_90px_72px_72px_72px_120px] ${
+                    showChallengeControl ? "pr-28" : ""
+                  } ${getRankStyles(entry.effectivePosition).row}`}
+                  style={{ animationDelay: `${index * 35}ms` }}
+                >
+                  <div>
+                    <p className="stat-label">{dictionary.common.rank}</p>
+                    <RankBadge rank={entry.effectivePosition} />
+                  </div>
+                  <div>
+                    <p className="text-lg font-black">
+                      {/* Stretched so the whole row stays one click target while the
+                          challenge control keeps its own, valid, nested form. */}
+                      <Link
+                        href={organizationPath(locale, organizationSlug, "players", entry.userId)}
+                        className="after:absolute after:inset-0 after:content-['']"
+                      >
+                        {playerName}
+                      </Link>
+                      {entry.userId === rivalId ? (
+                        <span className="ml-2 rounded-full bg-court-700 px-2 py-0.5 text-xs font-black align-middle text-white">
+                          {dictionary.ladder.rivalBadge}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-sm text-muted">{getTeamDisplayName(entry.user)}</p>
+                  </div>
+                  <Score label={dictionary.common.points} value={entry.points} locale={locale} strong />
+                  <Score label={dictionary.common.played} value={entry.matchesPlayed} locale={locale} />
+                  <Score label={dictionary.common.wins} value={entry.wins} locale={locale} tone="success" />
+                  <Score label={dictionary.common.losses} value={entry.losses} locale={locale} tone="danger" />
+                  {/* Pinned beside the rank badge on a phone so the control costs the
+                      row no extra height, then a column of its own once there is room. */}
+                  {showChallengeControl ? (
+                    <div className="absolute right-4 top-4 z-10 flex items-center justify-end sm:relative sm:right-auto sm:top-auto sm:col-span-6 lg:col-span-1">
+                      <LadderChallengeControl
+                        state={challengeState}
+                        organizationSlug={organizationSlug}
+                        seasonId={season.id}
+                        opponentId={entry.userId}
+                        opponentName={playerName}
+                        matchesPath={matchesPath}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                <div>
-                  <p className="text-lg font-black">
-                    {publicNames.get(entry.userId) ?? entry.user.username}
-                    {entry.userId === rivalId ? (
-                      <span className="ml-2 rounded-full bg-court-700 px-2 py-0.5 text-xs font-black align-middle text-white">
-                        {dictionary.ladder.rivalBadge}
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="text-sm text-muted">{getTeamDisplayName(entry.user)}</p>
-                </div>
-                <Score label={dictionary.common.points} value={entry.points} locale={locale} strong />
-                <Score label={dictionary.common.played} value={entry.matchesPlayed} locale={locale} />
-                <Score label={dictionary.common.wins} value={entry.wins} locale={locale} tone="success" />
-                <Score label={dictionary.common.losses} value={entry.losses} locale={locale} tone="danger" />
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -177,8 +223,56 @@ export default async function OrganizationLadderPage({
           </div>
         )}
       </section>
+
+      {/* Season context is background reading, so it sits below the standings and the actions. */}
+      <section className="mt-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+        <div className="section-band">
+          <p className="label">{dictionary.ladder.activeSeasonLabel}</p>
+          <h2 className="mt-2 text-2xl font-black sm:text-3xl">
+            {t(dictionary.ladder.seasonHeading, { season: seasonLabel })}
+          </h2>
+          <p className="mt-2 text-sm font-semibold text-muted">
+            {t(dictionary.ladder.seasonRange, {
+              start: formatDate(season.startsAt, locale),
+              end: formatDate(season.endsAt ?? season.startsAt, locale)
+            })}
+          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{dictionary.ladder.intro}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label={dictionary.ladder.players} value={formatNumber(ladder.length, locale)} />
+          <StatCard label={dictionary.ladder.teams} value={formatNumber(teamLadder.length, locale)} />
+          <StatCard
+            label={dictionary.ladder.daysLeft}
+            value={plural(daysUntilNextSeason, dictionary.ladder.dayCount)}
+          />
+        </div>
+      </section>
     </main>
   );
+}
+
+/** Scoped to the viewer inside their own organization and active season. */
+type ViewerChallenge = Awaited<ReturnType<typeof getActiveChallengesForPlayer>>[number];
+
+function toActiveChallengeCard(
+  challenge: ViewerChallenge,
+  viewerId: string,
+  ladder: Array<{ userId: string; currentRank: number; points: number }>,
+  publicNames: Map<string, string>,
+  labels: { acceptedOn: (date: Date) => string; rankDetail: (rank: number, points: number) => string }
+): ActiveChallengeCard {
+  const opponent = challenge.challengerId === viewerId ? challenge.challenged : challenge.challenger;
+  const ladderEntry = ladder.find((entry) => entry.userId === opponent.id);
+
+  return {
+    id: challenge.id,
+    opponentId: opponent.id,
+    opponentName: publicNames.get(opponent.id) ?? opponent.username,
+    opponentDetail: ladderEntry ? labels.rankDetail(ladderEntry.currentRank, ladderEntry.points) : null,
+    // An accepted challenge has acceptance as its last transition.
+    acceptedLabel: labels.acceptedOn(challenge.updatedAt)
+  };
 }
 
 function RankBadge({ rank }: { rank: number }) {

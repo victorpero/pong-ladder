@@ -1,0 +1,54 @@
+{
+  "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-20",
+      "summary": {
+        "en": "The first published Pong Ladder release.",
+        "sv": "Den första publicerade versionen av Pong Ladder."
+      },
+      "changes": {
+        "new": [
+          {
+            "en": "Run a table tennis ladder per organization, with fixed seasons, challenges, best-of-five match results, and season points standings.",
+            "sv": "Kör en bordtennisstege per organisation, med fasta säsonger, utmaningar, matchresultat i bäst av fem och poängställning för säsongen."
+          },
+          {
+            "en": "Team ladder standings alongside the player ladder.",
+            "sv": "Lagställning vid sidan av spelarstegen."
+          },
+          {
+            "en": "Player profiles with match history, rivals, and season statistics.",
+            "sv": "Spelarprofiler med matchhistorik, rivaler och säsongsstatistik."
+          },
+          {
+            "en": "Invite colleagues by link, QR code, or organization access code.",
+            "sv": "Bjud in kollegor med länk, QR-kod eller organisationskod."
+          },
+          {
+            "en": "Email verification and password reset for password accounts, plus Google sign-in.",
+            "sv": "E-postverifiering och lösenordsåterställning för lösenordskonton, samt inloggning med Google."
+          },
+          {
+            "en": "Email notifications when someone challenges you.",
+            "sv": "E-postavisering när någon utmanar dig."
+          },
+          {
+            "en": "Swedish and English throughout, with a language selector and shareable addresses per language.",
+            "sv": "Svenska och engelska rakt igenom, med språkväljare och delbara adresser per språk."
+          },
+          {
+            "en": "In-app version and What's new, so you can see what changed without leaving Pong Ladder.",
+            "sv": "Version och Nyheter i appen, så att du ser vad som ändrats utan att lämna Pong Ladder."
+          }
+        ],
+        "improved": [
+          {
+            "en": "The ladder is now the single entry point for finding players. The separate Players tab has been removed and the player directory is reachable from the standings.",
+            "sv": "Stegen är nu den enda ingången för att hitta spelare. Den separata Spelare-fliken har tagits bort och spelarkatalogen nås från ställningen."
+          }
+        ]
+      }
+    }
+  ]
+}
