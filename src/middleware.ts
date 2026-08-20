@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { postAuthenticationPath } from "@/lib/organization-paths";
 
-const PUBLIC_PATHS = ["/login", "/verify-email", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = ["/login", "/verify-email", "/forgot-password", "/reset-password", "/join"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -10,7 +11,8 @@ export async function middleware(request: NextRequest) {
     request.cookies.get("__Secure-better-auth.session_token")?.value;
 
   if (pathname === "/login" && session) {
-    return NextResponse.redirect(new URL("/organizations", request.url));
+    const destination = postAuthenticationPath(request.nextUrl.searchParams.get("next"));
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
   if (!isPublicPath && !session) {

@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { getSessionUser, requireOrganizationAdmin } from "@/lib/authz";
@@ -9,9 +10,15 @@ import {
   generateOrganizationInvitationToken,
   hashOrganizationInvitationToken,
   redeemOrganizationInvitation,
+  redeemOrganizationInvitationById,
   type InvitationRedemptionResult
 } from "@/lib/organization-invitation";
 import { organizationPath, organizationsPath } from "@/lib/organization-paths";
+import {
+  clearedPendingInvitationCookie,
+  PENDING_INVITATION_COOKIE,
+  readPendingInvitation
+} from "@/lib/pending-invitation";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit, getClientRateLimitKey, RateLimitError } from "@/lib/rate-limit";
 
@@ -34,6 +41,8 @@ export type OrganizationInvitationState = {
 export type RedeemInvitationState =
   | InvitationRedemptionResult
   | { outcome: "authentication_required" | "rate_limited" };
+
+export type ResumeInvitationState = RedeemInvitationState | { outcome: "none" };
 
 function value(formData: FormData, key: string) {
   return formData.get(key)?.toString() ?? "";
@@ -128,5 +137,44 @@ export async function redeemOrganizationInvitationAction(token: string): Promise
     throw error;
   }
 
-  return redeemOrganizationInvitation(token, sessionUser.user.id);
+  const redemption = await redeemOrganizationInvitation(token, sessionUser.user.id);
+
+  if (redemption.outcome === "redeemed" || redemption.outcome === "already_member") {
+    forgetPendingInvitation();
+  }
+
+  return redemption;
+}
+
+export async function resumePendingInvitationAction(): Promise<ResumeInvitationState> {
+  const invitationId = readPendingInvitation(cookies().get(PENDING_INVITATION_COOKIE)?.value);
+
+  if (!invitationId) {
+    forgetPendingInvitation();
+    return { outcome: "none" };
+  }
+
+  const sessionUser = await getSessionUser();
+
+  if (!sessionUser) {
+    return { outcome: "authentication_required" };
+  }
+
+  if (!sessionUser.user.emailVerifiedAt) {
+    return { outcome: "verification_required" };
+  }
+
+  const redemption = await redeemOrganizationInvitationById(invitationId, sessionUser.user.id);
+  forgetPendingInvitation();
+
+  if (redemption.outcome === "redeemed" || redemption.outcome === "already_member") {
+    refreshInvitationPages(redemption.organizationSlug);
+  }
+
+  return redemption;
+}
+
+function forgetPendingInvitation() {
+  const cleared = clearedPendingInvitationCookie();
+  cookies().set(cleared.name, cleared.value, cleared.options);
 }

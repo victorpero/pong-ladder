@@ -81,13 +81,15 @@ docker build --build-arg APP_ENABLE_HTTPS_HEADERS=true --tag pong-ladder:local .
 
 ## Transactional emails
 
-Email content is rendered independently of the delivery transport. The shared layout lives in `src/lib/email-template.ts`, and each message has its own module: `src/lib/verification-email-template.ts` and `src/lib/password-reset-email-template.ts`. Preview every message locally with deterministic example data:
+Email content is rendered independently of the delivery transport. The shared layout lives in `src/lib/email-template.ts`, and each message has its own module: `src/lib/verification-email-template.ts`, `src/lib/password-reset-email-template.ts`, and `src/lib/challenge-notification-email-template.ts`. Preview every message locally with deterministic example data:
 
 ```bash
 npm run email:preview
 ```
 
 The command writes the HTML and plain-text versions to a temporary directory and prints their paths. Never render or share a real recipient address, verification token, or password reset token.
+
+Delivery configuration, the Resend free-tier limits the project runs against, and the challenge-notification flow are documented in [docs/email-delivery.md](docs/email-delivery.md).
 
 ## Database changes
 

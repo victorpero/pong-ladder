@@ -16,10 +16,28 @@ jobs:
   quality:
     name: Quality checks
     runs-on: ubuntu-latest
-    # Prisma needs a syntactically valid URL to load the schema. CI never
-    # connects to this database or uses production credentials.
+    # A throwaway PostgreSQL service backs the database integration tests. It holds
+    # no production data and never uses production credentials.
     env:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/pong_ladder?schema=public
+      RUN_DB_INTEGRATION_TESTS: "1"
+      APP_BASE_URL: http://localhost:3000
+      SESSION_SECRET: ci-invitation-handoff-secret-0123456789
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pong_ladder
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d pong_ladder"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -39,6 +57,9 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
 
       - name: Run tests
         run: npm test

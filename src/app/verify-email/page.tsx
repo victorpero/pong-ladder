@@ -1,9 +1,12 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { VerificationControls } from "@/app/verify-email/VerificationControls";
 import { LogoMark } from "@/components/LogoMark";
 import { logout } from "@/lib/auth-actions";
 import { getSessionUser } from "@/lib/authz";
-import { postAuthenticationPath } from "@/lib/organization-paths";
+import { organizationsPath, postAuthenticationPath } from "@/lib/organization-paths";
+import { PENDING_INVITATION_COOKIE, readPendingInvitation } from "@/lib/pending-invitation";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,16 @@ export default async function VerifyEmailPage({
   const delivery = Array.isArray(searchParams.delivery) ? searchParams.delivery[0] : searchParams.delivery;
   const nextPath = safeNextPath(searchParams.next);
   const verified = status === "verified" || Boolean(sessionUser?.user.emailVerifiedAt);
+
+  // The account just became eligible, so resume the invitation it was created for
+  // instead of waiting for another click. Cross-device verification has no handoff
+  // cookie and keeps the Continue link below.
+  if (
+    sessionUser?.user.emailVerifiedAt &&
+    readPendingInvitation(cookies().get(PENDING_INVITATION_COOKIE)?.value)
+  ) {
+    redirect(organizationsPath);
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
