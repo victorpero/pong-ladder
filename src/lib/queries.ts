@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { activeChallengesForPlayerWhere } from "@/lib/challenge-rules";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
 import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
@@ -55,6 +56,22 @@ export async function getLadder(seasonId: string) {
       };
     })
   );
+}
+
+/**
+ * Every challenge that still ties the viewer to someone this season, pending and
+ * accepted alike.
+ *
+ * One query serves both ladder features: the reportable cards filter it down to
+ * accepted challenges, and the row controls need the pending ones as well.
+ */
+export async function getActiveChallengesForPlayer(organizationId: string, seasonId: string, userId: string) {
+  return prisma.challenge.findMany({
+    where: { organizationId, ...activeChallengesForPlayerWhere(seasonId, userId) },
+    include: { challenger: true, challenged: true },
+    // Oldest acceptance first: the match that has been waiting longest is reported first.
+    orderBy: { updatedAt: "asc" }
+  });
 }
 
 export async function getTeamLadder(seasonId: string) {

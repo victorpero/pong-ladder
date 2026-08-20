@@ -113,7 +113,19 @@ export const en = {
       other: "{count} players"
     },
     noSeasonTitle: "No active season",
-    noSeasonBody: "The current fixed season could not be loaded."
+    noSeasonBody: "The current fixed season could not be loaded.",
+    challengeControl: {
+      challenge: "Challenge",
+      challenging: "Sending...",
+      challengeAria: "Challenge {player}",
+      pending: "Pending",
+      pendingWaiting: " — waiting for {player} to respond",
+      accept: "Accept",
+      accepting: "Accepting...",
+      acceptAria: "Accept the challenge from {player}",
+      active: "Active",
+      activeAria: "Register the match against {player}"
+    }
   },
 
   activeChallenges: {
@@ -730,6 +742,15 @@ export const en = {
     rateLimited: "Too many attempts. Please wait a bit and try again.",
     genericError: "Something went wrong. Please try again.",
     checkForm: "Check the form and try again.",
+    challenge: {
+      window: "A player may only challenge someone within 3 ladder positions, above or below them. Players level on points share the same position.",
+      duplicate: "You already have an active challenge with this player. Finish it before starting another.",
+      self: "Players cannot challenge themselves.",
+      seasonMissing: "That season does not exist.",
+      notInSeason: "Both players must be joined to the season.",
+      stale: "That challenge is no longer waiting for you. Reload the ladder for the current state.",
+      failed: "That challenge could not be created. Reload the ladder and try again."
+    },
     auth: {
       identifierRequired: "Enter your email or username.",
       passwordLength: "Password must be at least 8 characters.",

@@ -58,6 +58,26 @@ export function getActiveChallengeOpponentIds(
 }
 
 /**
+ * In-memory twin of {@link activeChallengeBetweenWhere}: finds the challenge
+ * that currently ties two players together, in either direction, so a rendered
+ * list can answer the same question the database does without a round trip.
+ */
+export function findActiveChallengeBetween<T extends { challengerId: string; challengedId: string; status: ChallengeStatus | string }>(
+  challenges: T[],
+  playerId: string,
+  opponentId: string
+) {
+  return (
+    challenges.find(
+      (challenge) =>
+        isActiveChallenge(challenge) &&
+        ((challenge.challengerId === playerId && challenge.challengedId === opponentId) ||
+          (challenge.challengerId === opponentId && challenge.challengedId === playerId))
+    ) ?? null
+  );
+}
+
+/**
  * Distance is measured between effective positions, so players level on points
  * share one position and get the same reach. A distance of zero is a matchup
  * between tied players; callers exclude the challenger from their own targets.
@@ -73,6 +93,8 @@ export const challengeWindowMessage =
 
 export const duplicateActiveChallengeMessage =
   "You already have an active challenge with this player. Finish it before starting another.";
+
+export const selfChallengeMessage = "Players cannot challenge themselves.";
 
 export const staleChallengeResultMessage =
   "That challenge is no longer waiting for a result. Refresh the ladder to see its current state.";

@@ -113,7 +113,19 @@ export const sv: Dictionary = {
       other: "{count} spelare"
     },
     noSeasonTitle: "Ingen aktiv säsong",
-    noSeasonBody: "Den aktuella fasta säsongen kunde inte läsas in."
+    noSeasonBody: "Den aktuella fasta säsongen kunde inte läsas in.",
+    challengeControl: {
+      challenge: "Utmana",
+      challenging: "Skickar...",
+      challengeAria: "Utmana {player}",
+      pending: "Väntar",
+      pendingWaiting: " — väntar på svar från {player}",
+      accept: "Acceptera",
+      accepting: "Accepterar...",
+      acceptAria: "Acceptera utmaningen från {player}",
+      active: "Aktiv",
+      activeAria: "Registrera matchen mot {player}"
+    }
   },
 
   activeChallenges: {
@@ -741,6 +753,15 @@ export const sv: Dictionary = {
     rateLimited: "För många försök. Vänta en stund och försök igen.",
     genericError: "Något gick fel. Försök igen.",
     checkForm: "Kontrollera formuläret och försök igen.",
+    challenge: {
+      window: "En spelare får bara utmana någon inom 3 stegplaceringar, över eller under sig. Spelare med lika många poäng delar samma placering.",
+      duplicate: "Du har redan en aktiv utmaning med den här spelaren. Avsluta den innan du startar en ny.",
+      self: "Spelare kan inte utmana sig själva.",
+      seasonMissing: "Den säsongen finns inte.",
+      notInSeason: "Båda spelarna måste vara anmälda till säsongen.",
+      stale: "Den utmaningen väntar inte längre på dig. Ladda om stegen för aktuellt läge.",
+      failed: "Utmaningen kunde inte skapas. Ladda om stegen och försök igen."
+    },
     auth: {
       identifierRequired: "Ange din e-postadress eller ditt användarnamn.",
       passwordLength: "Lösenordet måste vara minst 8 tecken.",
