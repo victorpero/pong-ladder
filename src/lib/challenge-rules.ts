@@ -69,7 +69,17 @@ export const duplicateActiveChallengeMessage =
   "You already have an active challenge with this player. Finish it before starting another.";
 
 export const staleChallengeResultMessage =
-  "That challenge is no longer waiting for a result. Refresh the page to see its current state.";
+  "That challenge is no longer waiting for a result. Refresh the ladder to see its current state.";
+
+export const unreportableChallengeMessage = "Only accepted challenges can be attached to match results.";
+
+/**
+ * Both messages mean the same thing to the player: the challenge moved on while
+ * their page was open, so the result entry they are looking at is stale.
+ */
+export function isStaleChallengeResultMessage(message: string) {
+  return message === staleChallengeResultMessage || message === unreportableChallengeMessage;
+}
 
 export function splitActiveChallengeTargets<T extends { userId: string }>(targets: T[], activeOpponentIds: Iterable<string>) {
   const blockedOpponents = new Set(activeOpponentIds);

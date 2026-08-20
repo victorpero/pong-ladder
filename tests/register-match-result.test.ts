@@ -57,7 +57,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/authz", () => ({
   requireOrganizationUser: async () => {
     if (!state.session) {
-      throw new Error("REDIRECT:/login");
+      // Shaped like the error redirect() throws, which Next has to receive intact.
+      throw Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" });
     }
 
     return { session: state.session, organization: { id: "org-polisen", slug: "polisen" } };
@@ -172,8 +173,8 @@ vi.mock("@/lib/prisma", () => {
   return { prisma: db };
 });
 
-const { registerMatchResult } = await import("@/lib/actions");
-const { staleChallengeResultMessage } = await import("@/lib/challenge-rules");
+const { registerMatchResult, submitMatchResult } = await import("@/lib/actions");
+const { staleChallengeResultMessage, unreportableChallengeMessage } = await import("@/lib/challenge-rules");
 
 function resultForm(overrides: Partial<Record<string, string>> = {}) {
   const formData = new FormData();
@@ -246,7 +247,7 @@ describe("registerMatchResult from an accepted challenge", () => {
   it("rejects a second submission once the challenge is completed", async () => {
     await registerMatchResult(resultForm());
 
-    await expect(registerMatchResult(resultForm())).rejects.toThrow("Only accepted challenges");
+    await expect(registerMatchResult(resultForm())).rejects.toThrow(unreportableChallengeMessage);
     expect(state.matches).toHaveLength(1);
     expect(state.rankRecalculations).toEqual(["season-1"]);
   });
@@ -272,7 +273,7 @@ describe("registerMatchResult from an accepted challenge", () => {
   it("rejects a challenge that has not been accepted yet", async () => {
     state.challenges = [challengeRow({ status: ChallengeStatus.Pending })];
 
-    await expect(registerMatchResult(resultForm())).rejects.toThrow("Only accepted challenges");
+    await expect(registerMatchResult(resultForm())).rejects.toThrow(unreportableChallengeMessage);
     expect(state.matches).toEqual([]);
   });
 
@@ -328,5 +329,67 @@ describe("registerMatchResult from an accepted challenge", () => {
   it("requires a challenge to attach the result to", async () => {
     await expect(registerMatchResult(resultForm({ challengeId: "" }))).rejects.toThrow();
     expect(state.matches).toEqual([]);
+  });
+});
+
+describe("submitMatchResult form state", () => {
+  it("returns an empty state and records the result on success", async () => {
+    await expect(submitMatchResult({}, resultForm())).resolves.toEqual({});
+    expect(state.matches).toHaveLength(1);
+    expect(state.challenges[0].status).toBe(ChallengeStatus.Completed);
+  });
+
+  it("reports a challenge another participant already closed as stale", async () => {
+    state.challenges = [challengeRow({ status: ChallengeStatus.Completed })];
+
+    await expect(submitMatchResult({}, resultForm())).resolves.toEqual({
+      error: unreportableChallengeMessage,
+      stale: true
+    });
+    expect(state.matches).toEqual([]);
+  });
+
+  it("reports the loser of a submission race as stale", async () => {
+    state.matches = [{ seasonId: "season-1", winnerId: "rival", loserId: "me", loserSets: 0, challengeId: "challenge-1" }];
+
+    await expect(submitMatchResult({}, resultForm())).resolves.toEqual({
+      error: staleChallengeResultMessage,
+      stale: true
+    });
+    expect(state.matches).toHaveLength(1);
+  });
+
+  it("reports a challenge closed mid-transaction as stale", async () => {
+    state.onBeforeChallengeUpdate = () => {
+      state.challenges[0].status = ChallengeStatus.Forfeit;
+    };
+
+    await expect(submitMatchResult({}, resultForm())).resolves.toEqual({
+      error: staleChallengeResultMessage,
+      stale: true
+    });
+    expect(state.matches).toEqual([]);
+  });
+
+  it("returns a rule failure without marking the card stale", async () => {
+    state.session = { sub: "other" };
+
+    await expect(submitMatchResult({}, resultForm())).resolves.toEqual({
+      error: "Only admins or match participants can register match results.",
+      stale: false
+    });
+  });
+
+  it("returns a readable message for invalid form input", async () => {
+    await expect(submitMatchResult({}, resultForm({ loserSets: "3" }))).resolves.toEqual({
+      error: "Check the winner, loser and result before saving.",
+      stale: false
+    });
+  });
+
+  it("rethrows the framework redirect instead of rendering it as a form error", async () => {
+    state.session = null;
+
+    await expect(submitMatchResult({}, resultForm())).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
   });
 });

@@ -13,7 +13,9 @@ import {
   canChallengePlayer,
   challengeWindowMessage,
   duplicateActiveChallengeMessage,
-  staleChallengeResultMessage
+  isStaleChallengeResultMessage,
+  staleChallengeResultMessage,
+  unreportableChallengeMessage
 } from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
@@ -478,6 +480,59 @@ export async function registerMatchResult(formData: FormData) {
   refreshApp(organization.slug);
 }
 
+export type MatchResultFormState = {
+  error?: string;
+  /** The challenge moved on while the page was open, so its result entry is dead. */
+  stale?: boolean;
+};
+
+/**
+ * Form-state wrapper around {@link registerMatchResult} for inline result entry.
+ *
+ * Result entry lives next to the ladder, where an unhandled throw would replace
+ * the whole page with an error screen. Returning the failure instead lets the
+ * card show what happened and stop offering a result that the server has
+ * already rejected.
+ */
+export async function submitMatchResult(
+  _state: MatchResultFormState,
+  formData: FormData
+): Promise<MatchResultFormState> {
+  try {
+    await registerMatchResult(formData);
+
+    return {};
+  } catch (error) {
+    // redirect() and notFound() signal through thrown errors that Next must see.
+    if (isFrameworkError(error)) {
+      throw error;
+    }
+
+    const message = matchResultErrorMessage(error);
+
+    return { error: message, stale: isStaleChallengeResultMessage(message) };
+  }
+}
+
+function isFrameworkError(error: unknown) {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+
+  return typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND");
+}
+
+function matchResultErrorMessage(error: unknown) {
+  if (error instanceof z.ZodError) {
+    return "Check the winner, loser and result before saving.";
+  }
+
+  // Rate-limit and rule violations already carry a message meant for the player.
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "The result could not be saved.";
+}
+
 function assertCanRegisterMatch(session: SessionPayload, isAdmin: boolean, winnerId: string, loserId: string) {
   if (isAdmin || session.sub === winnerId || session.sub === loserId) {
     return;
@@ -508,7 +563,7 @@ async function assertAcceptedChallengeForMatch(
   });
 
   if (!challenge || challenge.status !== ChallengeStatus.Accepted) {
-    throw new Error("Only accepted challenges can be attached to match results.");
+    throw new Error(unreportableChallengeMessage);
   }
 
   const matchPlayerIds = new Set([input.winnerId, input.loserId]);
