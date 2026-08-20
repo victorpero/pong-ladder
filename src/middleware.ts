@@ -10,7 +10,9 @@ import {
 } from "@/lib/i18n/config";
 import { postAuthenticationPath } from "@/lib/organization-paths";
 
-const PUBLIC_PATHS = ["/login", "/verify-email", "/forgot-password", "/reset-password", "/join"];
+// Release notes are public information — the same notes are published as GitHub
+// Releases — so they stay readable from the sign-in screen.
+const PUBLIC_PATHS = ["/login", "/verify-email", "/forgot-password", "/reset-password", "/join", "/changelog"];
 
 /**
  * Paths that are not pages and therefore carry no language: API routes, the sign-out handler, the

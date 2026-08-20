@@ -137,6 +137,20 @@ Review generated SQL before committing it. Include rollout, backfill, and compat
 
 Merges to `main` publish the production container image. Contributors do not need access to the production environment to develop or test application changes.
 
+## Releases
+
+Every user-visible version comes from one file, `src/data/releases.json`. It feeds the version in the application footer, the in-app **What's new** page, the published GitHub Release, and the `version` field in `package.json`.
+
+When a change is worth telling players about, add or extend the top entry in that file and run:
+
+```bash
+npm run release:sync
+```
+
+A production release is cut by pushing a `v*` tag at a commit already on `main`; the release workflow then publishes the matching GitHub Release. Ordinary commits and merges into `dev` never publish one.
+
+The full process, the rules the release data must satisfy, and how to write player-facing notes are documented in [docs/releases.md](docs/releases.md).
+
 ## Deployment configuration
 
 Environment-specific production deployment configuration is maintained separately from this application repository. Pong Ladder does not currently provide a supported generic Kubernetes or self-hosting manifest set.

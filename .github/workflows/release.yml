@@ -1,0 +1,69 @@
+name: Release
+
+# Production releases are cut by pushing a version tag at a commit that is
+# already on main. Ordinary development commits and merges into dev never
+# publish a release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          # The whole history is needed to prove the tag is on main.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the tag points at a commit on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" FETCH_HEAD; then
+            echo "::error::${GITHUB_REF_NAME} does not point at a commit on main, so it is not a production artifact."
+            exit 1
+          fi
+
+      - name: Verify the tag matches the newest release entry
+        run: |
+          set -euo pipefail
+          release_version="$(npm run --silent release:version)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "${release_version}" != "${tag_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match the newest release entry ${release_version}."
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${release_version}" >> "${GITHUB_ENV}"
+
+      - name: Verify package metadata matches the release
+        run: npm run release:check
+
+      - name: Generate the release body
+        run: npm run --silent release:notes > release-body.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Pong Ladder v${RELEASE_VERSION}" \
+            --notes-file release-body.md \
+            --verify-tag
