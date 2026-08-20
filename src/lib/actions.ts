@@ -27,6 +27,7 @@ import { calculateMatchScore, validateBestOfFiveResult } from "@/lib/scoring";
 import { joinActiveSeasonForUser } from "@/lib/season-membership";
 import type { SessionPayload } from "@/lib/session";
 import { revalidateOrganizationSections } from "@/lib/revalidation";
+import { recordedTeamResultWhere } from "@/lib/team-standings";
 import { UserFacingError, isUserFacingError } from "@/lib/user-facing-error";
 
 const playerSchema = z.object({
@@ -299,6 +300,16 @@ export async function deleteTeam(formData: FormData) {
 
     if (memberCount > 0) {
       throw new Error("Only teams without members can be deleted.");
+    }
+
+    // Standings resolve the team snapshot on every match through the team rows,
+    // so deleting a team that has played would erase its history from them.
+    const recordedResults = await tx.match.count({
+      where: { organizationId: organization.id, ...recordedTeamResultWhere(teamId) }
+    });
+
+    if (recordedResults > 0) {
+      throw new Error("Teams with recorded match results cannot be deleted.");
     }
 
     const deleted = await tx.team.deleteMany({ where: { id: teamId, organizationId: organization.id } });
@@ -731,6 +742,15 @@ async function assertAcceptedChallengeForMatch(
   }
 }
 
+async function resolveTeamId(tx: Prisma.TransactionClient, organizationId: string, userId: string) {
+  const membership = await tx.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+    select: { teamId: true }
+  });
+
+  return membership?.teamId ?? null;
+}
+
 async function registerMatchInTransaction(
   tx: Prisma.TransactionClient,
   input: {
@@ -768,6 +788,13 @@ async function registerMatchInTransaction(
     loserSets: input.loserSets as 0 | 1 | 2
   });
 
+  // Team standings read these snapshots, so a later team change can never turn a
+  // historical internal game into an inter-team one, or the other way round.
+  const [winnerTeamId, loserTeamId] = await Promise.all([
+    resolveTeamId(tx, winner.organizationId, input.winnerId),
+    resolveTeamId(tx, loser.organizationId, input.loserId)
+  ]);
+
   await tx.match.create({
     data: {
       organizationId: winner.organizationId,
@@ -780,6 +807,8 @@ async function registerMatchInTransaction(
       loserPointsBefore: loser.points,
       winnerPointsAfter: score.winnerPointsAfter,
       loserPointsAfter: score.loserPointsAfter,
+      winnerTeamId,
+      loserTeamId,
       playedAt: input.playedAt,
       challengeId: input.challengeId
     }

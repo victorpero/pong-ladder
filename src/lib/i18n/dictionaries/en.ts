@@ -264,6 +264,7 @@ export const en = {
     switchTeam: "Switch team",
     joinTeam: "Join team",
     noMembers: "No members yet",
+    keptForResults: "Kept for its recorded season results.",
     yourTeamHeading: "Your team",
     leaveTeam: "Leave team",
     noTeam: "You are not on a team yet.",

@@ -264,6 +264,7 @@ export const sv: Dictionary = {
     switchTeam: "Byt lag",
     joinTeam: "Gå med i lag",
     noMembers: "Inga medlemmar ännu",
+    keptForResults: "Sparas för sina registrerade säsongsresultat.",
     yourTeamHeading: "Ditt lag",
     leaveTeam: "Lämna laget",
     noTeam: "Du är inte med i något lag ännu.",

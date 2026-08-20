@@ -381,6 +381,10 @@ model Match {
   loserPointsBefore  Int
   winnerPointsAfter  Int
   loserPointsAfter   Int
+  /// Team assignment of each player when the result was registered. Snapshots, not
+  /// references, so later team changes never reinterpret a historical result.
+  winnerTeamId       String?
+  loserTeamId        String?
   playedAt           DateTime   @default(now())
   challengeId        String?    @unique
   createdAt          DateTime   @default(now())
@@ -393,6 +397,8 @@ model Match {
   @@index([organizationId, seasonId, playedAt])
   @@index([winnerId])
   @@index([loserId])
+  @@index([seasonId, winnerTeamId])
+  @@index([seasonId, loserTeamId])
 }
 
 model Challenge {
