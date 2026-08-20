@@ -116,6 +116,19 @@ export const en = {
     noSeasonBody: "The current fixed season could not be loaded."
   },
 
+  activeChallenges: {
+    label: "Your active challenges",
+    heading: "Matches to report",
+    acceptedOn: "Accepted {date}",
+    staleBadge: "No longer open",
+    enterResult: "Enter result",
+    closeResult: "Close result entry",
+    refreshLadder: "Refresh ladder",
+    viewerWon: "I won",
+    opponentWon: "{opponent} won",
+    savingResult: "Saving result..."
+  },
+
   seasonJoin: {
     heading: "Join current season",
     joining: "Joining the active season...",

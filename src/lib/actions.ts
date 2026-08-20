@@ -12,7 +12,8 @@ import {
   activeChallengeBetweenWhere,
   canChallengePlayer,
   challengeWindowMessage,
-  duplicateActiveChallengeMessage
+  duplicateActiveChallengeMessage,
+  staleChallengeResultMessage
 } from "@/lib/challenge-rules";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
@@ -450,19 +451,29 @@ export async function registerMatchResult(formData: FormData) {
   const isAdmin = await getIsAdmin(session.sub, organization.id);
   assertCanRegisterMatch(session, isAdmin, parsed.winnerId, parsed.loserId);
 
-  await prisma.$transaction(async (tx) => {
-    await assertAcceptedChallengeForMatch(tx, {
-      organizationId: organization.id,
-      challengeId: parsed.challengeId,
-      seasonId: parsed.seasonId,
-      winnerId: parsed.winnerId,
-      loserId: parsed.loserId
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await assertAcceptedChallengeForMatch(tx, {
+        organizationId: organization.id,
+        challengeId: parsed.challengeId,
+        seasonId: parsed.seasonId,
+        winnerId: parsed.winnerId,
+        loserId: parsed.loserId
+      });
 
-    const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
-    if (!season) throw new Error("That season does not exist.");
-    await registerMatchInTransaction(tx, parsed);
-  });
+      const season = await tx.season.findFirst({ where: { id: parsed.seasonId, organizationId: organization.id }, select: { id: true } });
+      if (!season) throw new Error("That season does not exist.");
+      await registerMatchInTransaction(tx, { ...parsed, requireChallengeStatus: ChallengeStatus.Accepted });
+    });
+  } catch (error) {
+    // A second submission of the same challenge loses the race on the unique
+    // match-per-challenge index rather than recording the result twice.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error(staleChallengeResultMessage);
+    }
+
+    throw error;
+  }
 
   refreshApp(organization.slug);
 }
@@ -519,6 +530,8 @@ async function registerMatchInTransaction(
     loserSets: number;
     playedAt: Date;
     challengeId?: string;
+    /** Set when the caller has already read the challenge and needs that read to still hold. */
+    requireChallengeStatus?: ChallengeStatus;
   }
 ) {
   const [winner, loser] = await Promise.all([
@@ -573,13 +586,22 @@ async function registerMatchInTransaction(
   });
 
   if (input.challengeId) {
-    await tx.challenge.update({
-      where: { id: input.challengeId },
+    // Conditional so a challenge another participant closed in the meantime
+    // rolls the whole result back instead of overwriting the newer state.
+    const completed = await tx.challenge.updateMany({
+      where: {
+        id: input.challengeId,
+        ...(input.requireChallengeStatus ? { status: input.requireChallengeStatus } : {})
+      },
       data: {
         status: ChallengeStatus.Completed,
         completedAt: input.playedAt
       }
     });
+
+    if (completed.count === 0) {
+      throw new Error(staleChallengeResultMessage);
+    }
   }
 
   await recalculateRanks(tx, input.seasonId);

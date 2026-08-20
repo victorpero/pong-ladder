@@ -68,6 +68,9 @@ export const challengeWindowMessage =
 export const duplicateActiveChallengeMessage =
   "You already have an active challenge with this player. Finish it before starting another.";
 
+export const staleChallengeResultMessage =
+  "That challenge is no longer waiting for a result. Refresh the page to see its current state.";
+
 export function splitActiveChallengeTargets<T extends { userId: string }>(targets: T[], activeOpponentIds: Iterable<string>) {
   const blockedOpponents = new Set(activeOpponentIds);
 
