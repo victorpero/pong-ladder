@@ -149,6 +149,8 @@ npm run release:sync
 
 Promoting `dev` to `main` is the release. The release workflow tags the promoted commit, publishes the matching GitHub Release, and only then builds and pushes the production container image, so a deployed version always has a tag and a release behind it. There is no manual tagging step, and merges into `dev` never publish either.
 
+Every promotion to `main` must therefore add a release entry. Promoting a version that was already released at another commit fails the workflow instead of deploying code the published tag does not describe.
+
 The full process, the rules the release data must satisfy, and how to write player-facing notes are documented in [docs/releases.md](docs/releases.md).
 
 ## Deployment configuration

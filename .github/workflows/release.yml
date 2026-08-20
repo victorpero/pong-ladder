@@ -63,22 +63,27 @@ jobs:
           set -euo pipefail
           tag="v${RELEASE_VERSION}"
 
-          # Not every promotion raises the version. When this release is already
-          # published the version is represented on GitHub and the image below
-          # may be rebuilt from it.
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "Release ${tag} is already published; this promotion does not introduce a new version."
-            exit 0
-          fi
-
-          # A tag without a release means an earlier attempt stopped part way.
-          # Reuse it only when it really belongs to this line of history.
+          # Every production promotion has to carry its own version. The tag for
+          # that version must resolve to exactly this commit, because the image
+          # below is published as v${RELEASE_VERSION}: if the tag named an
+          # earlier commit, the tag, the release, and the deployed image would
+          # describe three different artifacts.
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            if ! git merge-base --is-ancestor "${tag}" "${GITHUB_SHA}"; then
-              echo "::error::Tag ${tag} already exists but is not an ancestor of the promoted commit."
+            tagged_sha="$(git rev-list -n 1 "refs/tags/${tag}")"
+
+            if [ "${tagged_sha}" != "${GITHUB_SHA}" ]; then
+              echo "::error::Version ${RELEASE_VERSION} was already released at ${tagged_sha}, but this promotion is ${GITHUB_SHA}. Add a new entry to src/data/releases.json for this release."
               exit 1
             fi
-            echo "Tag ${tag} exists without a release; publishing the release for it."
+
+            # Re-running the workflow for the same commit must not fail.
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              echo "Release ${tag} is already published for this commit."
+              exit 0
+            fi
+
+            # A tag without a release means an earlier run stopped part way.
+            echo "Tag ${tag} exists for this commit without a release; publishing it."
           fi
 
           gh release create "${tag}" \

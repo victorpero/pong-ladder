@@ -59,6 +59,8 @@ GitHub's generated release notes are a reasonable prompt for remembering what la
 3. Open the pull request into `dev` as usual. `npm test` fails if the package metadata has drifted from the newest entry.
 4. Promote `dev` to `main` through a pull request, as described in [CONTRIBUTING.md](../CONTRIBUTING.md#branch-and-release-flow).
 
+Step 1 is not optional: a promotion whose version was already released at another commit fails, because the tag, the release, and the versioned image would otherwise describe different code.
+
 That is the whole process. There is no manual tagging step: merging to `main` is the release. [`.github/workflows/release.yml`](../.github/workflows/release.yml) tags the promoted commit, publishes the GitHub Release, and only then builds and pushes the production image.
 
 ## What the release workflow guarantees
@@ -70,7 +72,9 @@ Promotion to `main` is the single production path, and the workflow runs it as o
 
 This ordering is what keeps the version honest. The production image is what makes a version live, and it cannot be published unless the matching tag and GitHub Release already exist. If the release step fails, nothing is deployed and production keeps serving the previous version rather than one GitHub does not advertise.
 
-Not every promotion raises the version. When the release for the current version is already published, the first job records that and succeeds without creating anything, and the image is rebuilt from the same version. A tag that exists without a release — an earlier run that stopped part way — is reused only after confirming it is an ancestor of the promoted commit.
+**Every promotion to `main` must carry a new version.** The production image is published as `vX.Y.Z` as well as `latest`, so the tag for the promoted version has to resolve to exactly the promoted commit. If `src/data/releases.json` still names a version that was already released at an earlier commit, the workflow stops and asks for a new entry rather than rebuilding `vX.Y.Z` from different code. Promoting to `main` is releasing; if a change is worth deploying, it is worth a version.
+
+Two paths are still no-ops rather than failures: re-running the workflow for a commit whose release is already published does nothing, and a tag that exists for *this exact commit* without a release — an earlier run that stopped part way — is completed by publishing its release.
 
 Merges into `dev` do not run this workflow, so ordinary development never publishes a release or a production image.
 
