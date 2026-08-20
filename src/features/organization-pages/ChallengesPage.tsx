@@ -54,7 +54,7 @@ export default async function OrganizationChallengesPage({ organizationSlug }: {
   );
   const challengeOptions = availableChallengeTargets.map((entry) => ({
     id: entry.userId,
-    label: `${publicNames.get(entry.userId) ?? entry.user.username} (#${entry.currentRank})`,
+    label: `${publicNames.get(entry.userId) ?? entry.user.username} (#${entry.effectivePosition})`,
     detail: `${entry.points} pts`
   }));
   const currentPlayerName = currentPlayer

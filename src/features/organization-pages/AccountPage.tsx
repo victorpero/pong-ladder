@@ -85,7 +85,7 @@ export default async function OrganizationAccountPage({ organizationSlug }: { or
           <p className="mt-4 text-sm text-muted">Account created {formatDate(user.createdAt)}</p>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Rank" value={entry ? `#${entry.currentRank}` : "N/A"} />
+          <StatCard label="Rank" value={entry ? `#${entry.effectivePosition}` : "N/A"} />
           <StatCard label="Points" value={entry?.points ?? 0} />
           <StatCard label="Record" value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
         </div>

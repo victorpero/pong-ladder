@@ -93,12 +93,12 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
               <Link
                 href={organizationPath(organizationSlug, "players", entry.userId)}
                 key={entry.id}
-                className={`rank-in grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(entry.currentRank).row}`}
+                className={`rank-in grid gap-3 rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-soft sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(entry.effectivePosition).row}`}
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
                   <p className="stat-label">Rank</p>
-                  <RankBadge rank={entry.currentRank} />
+                  <RankBadge rank={entry.effectivePosition} />
                 </div>
                 <div>
                   <p className="text-lg font-black">
@@ -139,12 +139,12 @@ export default async function OrganizationLadderPage({ organizationSlug }: { org
             {teamLadder.map((team, index) => (
               <article
                 key={team.id}
-                className={`rank-in grid gap-3 rounded-lg border p-4 sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(team.currentRank).row}`}
+                className={`rank-in grid gap-3 rounded-lg border p-4 sm:grid-cols-[72px_1fr_90px_72px_72px_72px] ${getRankStyles(team.effectivePosition).row}`}
                 style={{ animationDelay: `${index * 35}ms` }}
               >
                 <div>
                   <p className="stat-label">Rank</p>
-                  <RankBadge rank={team.currentRank} />
+                  <RankBadge rank={team.effectivePosition} />
                 </div>
                 <div>
                   <p className="text-lg font-black">{team.name}</p>

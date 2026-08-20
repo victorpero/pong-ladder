@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureCurrentSeason } from "@/lib/fixed-seasons";
+import { withEffectivePositions } from "@/lib/ladder-positions";
 import { matchFeedOrderBy } from "@/lib/match-feed";
 
 export async function getActiveSeason(organizationId: string) {
@@ -38,18 +39,22 @@ export async function getLadder(seasonId: string) {
   const wins = new Map(matchCounts.map((item) => [item.winnerId, item._count.winnerId]));
   const losses = new Map(lossCounts.map((item) => [item.loserId, item._count.loserId]));
 
-  return players.map((player) => {
-    const winCount = wins.get(player.userId) ?? 0;
-    const lossCount = losses.get(player.userId) ?? 0;
+  // Rows stay in display order; the position rides along so the pages and the
+  // challenge validation read the same tied standings.
+  return withEffectivePositions(
+    players.map((player) => {
+      const winCount = wins.get(player.userId) ?? 0;
+      const lossCount = losses.get(player.userId) ?? 0;
 
-    return {
-      ...player,
-      user: { ...player.user, team: player.membership.team },
-      wins: winCount,
-      losses: lossCount,
-      matchesPlayed: winCount + lossCount
-    };
-  });
+      return {
+        ...player,
+        user: { ...player.user, team: player.membership.team },
+        wins: winCount,
+        losses: lossCount,
+        matchesPlayed: winCount + lossCount
+      };
+    })
+  );
 }
 
 export async function getTeamLadder(seasonId: string) {
@@ -90,12 +95,9 @@ export async function getTeamLadder(seasonId: string) {
     teams.set(current.id, current);
   }
 
-  return Array.from(teams.values())
-    .sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
-    .map((team, index) => ({
-      ...team,
-      currentRank: index + 1
-    }));
+  return withEffectivePositions(
+    Array.from(teams.values()).sort((left, right) => right.points - left.points || left.name.localeCompare(right.name))
+  );
 }
 
 /**

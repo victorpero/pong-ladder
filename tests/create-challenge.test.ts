@@ -132,6 +132,24 @@ function challengeForm(challengedId: string) {
   return formData;
 }
 
+/**
+ * Builds a season ladder from point totals in display order. Named players take
+ * the first row holding their point total; the rest are filler.
+ */
+function ladderOf(points: number[], named: Record<string, number>): LadderRow[] {
+  const remaining = new Map(Object.entries(named));
+
+  return points.map((value, index) => {
+    const userId = Array.from(remaining.entries()).find(([, namedPoints]) => namedPoints === value)?.[0];
+
+    if (userId) {
+      remaining.delete(userId);
+    }
+
+    return { userId: userId ?? `filler-${index + 1}`, currentRank: index + 1, points: value };
+  });
+}
+
 function activeChallenge(challengerId: string, challengedId: string, status: ChallengeStatus): ChallengeRow {
   return {
     id: "challenge-existing",
@@ -229,10 +247,95 @@ describe("createChallenge duplicate prevention", () => {
   });
 
   it("still enforces the ladder window", async () => {
-    state.ladder = [
-      { userId: "me", currentRank: 9, points: 5 },
-      { userId: "rival", currentRank: 1, points: 40 }
+    state.ladder = ladderOf([40, 32, 26, 20, 12, 5], { me: 5, rival: 40 });
+
+    await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
+    expect(state.challenges).toHaveLength(0);
+  });
+});
+
+describe("createChallenge with tied points", () => {
+  it("lets every player tied at the bottom reach the same opponent", async () => {
+    for (const challenger of ["tied-a", "tied-b", "tied-c"]) {
+      state.session = { sub: challenger };
+      state.challenges = [];
+      state.ladder = ladderOf([30, 20, 10, 0, 0, 0], { leader: 30, "tied-a": 0, "tied-b": 0, "tied-c": 0 });
+
+      await createChallenge(challengeForm("leader"));
+
+      expect(state.challenges).toMatchObject([{ challengerId: challenger, challengedId: "leader" }]);
+    }
+  });
+
+  it("lets players who share a position challenge each other", async () => {
+    state.ladder = ladderOf([30, 20, 10, 0, 0], { me: 0, rival: 0 });
+
+    await createChallenge(challengeForm("rival"));
+
+    expect(state.challenges).toHaveLength(1);
+  });
+
+  it("ignores where the tie-break puts a player inside their point group", async () => {
+    // Bottom row of the ladder, but level with the two rows above it, so the
+    // tie-break is the only thing that separates the three of them.
+    const standings: LadderRow[] = [
+      { userId: "rival", currentRank: 1, points: 30 },
+      { userId: "second", currentRank: 2, points: 20 },
+      { userId: "third", currentRank: 3, points: 10 },
+      { userId: "tied-a", currentRank: 4, points: 0 },
+      { userId: "tied-b", currentRank: 5, points: 0 },
+      { userId: "me", currentRank: 6, points: 0 }
     ];
+
+    for (const rows of [standings, [...standings].reverse()]) {
+      state.challenges = [];
+      state.ladder = rows;
+
+      await createChallenge(challengeForm("rival"));
+
+      expect(state.challenges).toHaveLength(1);
+    }
+  });
+
+  it("keeps a tie at the top from shortening the ladder below it", async () => {
+    // Four players share first place, so the fifth stands on position 5 and
+    // cannot reach them even though only one point total separates the groups.
+    state.ladder = ladderOf([40, 40, 40, 40, 12], { rival: 40, me: 12 });
+
+    await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
+    expect(state.challenges).toHaveLength(0);
+  });
+
+  it("shares the reach of a tie in the middle of the ladder", async () => {
+    state.ladder = ladderOf([40, 20, 20, 20, 8], { rival: 40, me: 20 });
+
+    await createChallenge(challengeForm("rival"));
+
+    expect(state.challenges).toHaveLength(1);
+  });
+
+  it("opens the window when a points change creates a tie", async () => {
+    state.ladder = ladderOf([40, 32, 26, 20, 12, 5], { me: 5, rival: 40 });
+
+    await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
+
+    // The same player, now level with the three ahead of them.
+    state.ladder = ladderOf([40, 32, 26, 26, 26, 26], { me: 26, rival: 40 });
+
+    await createChallenge(challengeForm("rival"));
+
+    expect(state.challenges).toHaveLength(1);
+  });
+
+  it("closes the window when a points change breaks a tie", async () => {
+    state.ladder = ladderOf([30, 0, 0, 0], { rival: 30, me: 0 });
+
+    await createChallenge(challengeForm("rival"));
+    expect(state.challenges).toHaveLength(1);
+
+    state.challenges = [];
+    // The other two win their way past, pushing the challenger down to fifth.
+    state.ladder = ladderOf([30, 24, 18, 12, 0], { rival: 30, me: 0 });
 
     await expect(createChallenge(challengeForm("rival"))).rejects.toThrow(/3 ladder positions/);
     expect(state.challenges).toHaveLength(0);

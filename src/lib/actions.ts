@@ -12,6 +12,7 @@ import {
   challengeWindowMessage,
   duplicateActiveChallengeMessage
 } from "@/lib/challenge-rules";
+import { withEffectivePositions } from "@/lib/ladder-positions";
 import { prisma } from "@/lib/prisma";
 import { recalculateRanks } from "@/lib/rankings";
 import { consumeRateLimit, getClientRateLimitKey } from "@/lib/rate-limit";
@@ -275,7 +276,7 @@ export async function createChallenge(formData: FormData) {
         throw new Error("That season does not exist.");
       }
 
-      const ladder = await tx.seasonPlayer.findMany({
+      const standings = await tx.seasonPlayer.findMany({
         where: {
           seasonId,
           organizationId: organization.id,
@@ -283,6 +284,9 @@ export async function createChallenge(formData: FormData) {
         },
         orderBy: { currentRank: "asc" }
       });
+      // Same calculation the ladder pages use, so the form can never offer a
+      // target this check rejects.
+      const ladder = withEffectivePositions(standings);
 
       const challenger = ladder.find((player) => player.userId === challengerId);
       const challenged = ladder.find((player) => player.userId === challengedId);

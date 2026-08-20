@@ -43,7 +43,7 @@ export default async function OrganizationPlayersPage({ organizationSlug }: { or
                   </div>
                   <div>
                     <p className="stat-label">Rank</p>
-                    <p className="font-bold">{ladderEntry ? `#${ladderEntry.currentRank}` : "Not joined"}</p>
+                    <p className="font-bold">{ladderEntry ? `#${ladderEntry.effectivePosition}` : "Not joined"}</p>
                   </div>
                   <div>
                     <p className="stat-label">Points</p>

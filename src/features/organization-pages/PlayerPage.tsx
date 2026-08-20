@@ -103,7 +103,7 @@ export default async function OrganizationPlayerPage({
   );
   const challengeOptions = availableChallengeTargets.map((item) => ({
     id: item.userId,
-    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.currentRank})`,
+    label: `${publicNames.get(item.userId) ?? item.user.username} (#${item.effectivePosition})`,
     detail: `${item.points} pts`
   }));
   const defaultChallengeTargetId = availableChallengeTargets.some((item) => item.userId === user.id) ? user.id : undefined;
@@ -111,7 +111,7 @@ export default async function OrganizationPlayerPage({
   return (
     <main className="page-shell">
       <section className="mb-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr]">
-        <StatCard label="Rank" value={entry ? `#${entry.currentRank}` : "N/A"} />
+        <StatCard label="Rank" value={entry ? `#${entry.effectivePosition}` : "N/A"} />
         <StatCard label="Points" value={entry?.points ?? 0} />
         <StatCard label="Record" value={entry ? `${entry.wins}-${entry.losses}` : "0-0"} />
       </section>

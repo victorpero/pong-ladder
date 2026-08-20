@@ -252,7 +252,7 @@ export default async function OrganizationAdminPage({ organizationSlug }: { orga
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-black">
-                        #{entry.currentRank} {publicNames.get(entry.userId) ?? entry.user.username}
+                        #{entry.effectivePosition} {publicNames.get(entry.userId) ?? entry.user.username}
                       </p>
                       <p className="text-sm text-muted">
                         {entry.points} pts · {getTeamDisplayName(entry.user)}

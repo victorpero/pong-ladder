@@ -61,7 +61,7 @@ export default async function OrganizationMatchesPage({
         return {
           id: player.id,
           label: publicNames.get(player.id) ?? player.username,
-          detail: ladderEntry ? `#${ladderEntry.currentRank} · ${ladderEntry.points} points` : "Accepted challenge"
+          detail: ladderEntry ? `#${ladderEntry.effectivePosition} · ${ladderEntry.points} points` : "Accepted challenge"
         };
       })
     : [];
