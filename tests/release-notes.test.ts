@@ -7,6 +7,7 @@ import {
   getCurrentRelease,
   getCurrentVersion,
   getReleases,
+  isValidReleaseDate,
   parseReleases,
   releaseChangeGroups,
   renderReleaseBody
@@ -101,6 +102,24 @@ describe("parseReleases", () => {
     ).toThrow(/YYYY-MM-DD/);
   });
 
+  // Date normalizes 2026-02-31 to 2026-03-03, which would render a release on
+  // a day its notes never claimed.
+  it("rejects a date that looks well formed but is not a real calendar day", () => {
+    for (const date of ["2026-02-31", "2026-04-31", "2026-02-30", "2025-02-29"]) {
+      expect(() =>
+        parseReleases({ releases: [{ version: "1.0.0", date, changes: { new: [text("x")] } }] })
+      ).toThrow(/real calendar date/);
+    }
+  });
+
+  it("accepts a genuine leap day", () => {
+    const [release] = parseReleases({
+      releases: [{ version: "1.0.0", date: "2024-02-29", changes: { new: [text("x")] } }]
+    });
+
+    expect(release.date).toBe("2024-02-29");
+  });
+
   it("rejects unsupported change groups so notes stay grouped consistently", () => {
     expect(() =>
       parseReleases({ releases: [{ version: "1.0.0", date: "2026-01-01", changes: { removed: [text("x")] } }] })
@@ -180,11 +199,18 @@ describe("the repository release data", () => {
   });
 
   it("stays in step with the version recorded in package metadata", () => {
-    const packageVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-    const lockVersion = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8")).version;
+    const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
 
-    expect(packageVersion).toBe(getCurrentVersion());
-    expect(lockVersion).toBe(getCurrentVersion());
+    expect(packageJson.version).toBe(getCurrentVersion());
+    expect(lock.version).toBe(getCurrentVersion());
+    expect(lock.packages[""].version).toBe(getCurrentVersion());
+  });
+
+  it("dates every release with a real calendar day", () => {
+    for (const release of getReleases()) {
+      expect(isValidReleaseDate(release.date)).toBe(true);
+    }
   });
 
   it("labels every change group in every supported language", () => {
@@ -216,5 +242,31 @@ describe("the repository release data", () => {
         }
       }
     }
+  });
+});
+
+describe("isValidReleaseDate", () => {
+  it("accepts real calendar days, including leap days", () => {
+    expect(isValidReleaseDate("2026-08-20")).toBe(true);
+    expect(isValidReleaseDate("2024-02-29")).toBe(true);
+    expect(isValidReleaseDate("2026-12-31")).toBe(true);
+  });
+
+  it("rejects impossible days that Date would silently normalize", () => {
+    expect(isValidReleaseDate("2026-02-31")).toBe(false);
+    expect(isValidReleaseDate("2026-04-31")).toBe(false);
+    expect(isValidReleaseDate("2025-02-29")).toBe(false);
+  });
+
+  it("rejects out-of-range months and days", () => {
+    expect(isValidReleaseDate("2026-13-01")).toBe(false);
+    expect(isValidReleaseDate("2026-00-10")).toBe(false);
+    expect(isValidReleaseDate("2026-01-32")).toBe(false);
+  });
+
+  it("rejects anything that is not a bare YYYY-MM-DD value", () => {
+    expect(isValidReleaseDate("2026-8-20")).toBe(false);
+    expect(isValidReleaseDate("2026-08-20T00:00:00Z")).toBe(false);
+    expect(isValidReleaseDate("")).toBe(false);
   });
 });

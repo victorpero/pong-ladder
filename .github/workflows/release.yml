@@ -1,26 +1,36 @@
 name: Release
 
-# Production releases are cut by pushing a version tag at a commit that is
-# already on main. Ordinary development commits and merges into dev never
-# publish a release.
+# Promotion to main is the only production path, and it is a single sequence:
+# the GitHub Release is published first, and the production image is built only
+# once that release exists. Neither half can succeed on its own, so production
+# can never report a version that has no matching tag and release.
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
-  publish:
+  release:
     name: Publish GitHub Release
+    # A manually dispatched run can select any ref. Never release anything else.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
         with:
-          # The whole history is needed to prove the tag is on main.
+          # Tags are needed to tell a new version from one already released.
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -32,25 +42,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify the tag points at a commit on main
+      - name: Resolve the promoted version
+        id: resolve
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" FETCH_HEAD; then
-            echo "::error::${GITHUB_REF_NAME} does not point at a commit on main, so it is not a production artifact."
-            exit 1
-          fi
-
-      - name: Verify the tag matches the newest release entry
-        run: |
-          set -euo pipefail
-          release_version="$(npm run --silent release:version)"
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [ "${release_version}" != "${tag_version}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match the newest release entry ${release_version}."
-            exit 1
-          fi
-          echo "RELEASE_VERSION=${release_version}" >> "${GITHUB_ENV}"
+          version="$(npm run --silent release:version)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
 
       - name: Verify package metadata matches the release
         run: npm run release:check
@@ -58,12 +56,68 @@ jobs:
       - name: Generate the release body
         run: npm run --silent release:notes > release-body.md
 
-      - name: Publish the GitHub Release
+      - name: Publish the tag and GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release create "${GITHUB_REF_NAME}" \
+          tag="v${RELEASE_VERSION}"
+
+          # Not every promotion raises the version. When this release is already
+          # published the version is represented on GitHub and the image below
+          # may be rebuilt from it.
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} is already published; this promotion does not introduce a new version."
+            exit 0
+          fi
+
+          # A tag without a release means an earlier attempt stopped part way.
+          # Reuse it only when it really belongs to this line of history.
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            if ! git merge-base --is-ancestor "${tag}" "${GITHUB_SHA}"; then
+              echo "::error::Tag ${tag} already exists but is not an ancestor of the promoted commit."
+              exit 1
+            fi
+            echo "Tag ${tag} exists without a release; publishing the release for it."
+          fi
+
+          gh release create "${tag}" \
+            --target "${GITHUB_SHA}" \
             --title "Pong Ladder v${RELEASE_VERSION}" \
-            --notes-file release-body.md \
-            --verify-tag
+            --notes-file release-body.md
+
+  publish:
+    name: Publish container image
+    # The production image is gated on the release above. If the release cannot
+    # be published, no image is pushed and production keeps serving the previous
+    # version rather than one GitHub does not advertise.
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: APP_ENABLE_HTTPS_HEADERS=true
+          # The Talos production node is amd64. Building only this native
+          # platform avoids the unreliable ARM emulation path on Actions.
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:v${{ needs.release.outputs.version }}
