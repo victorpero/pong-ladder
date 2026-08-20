@@ -116,6 +116,19 @@ export const sv: Dictionary = {
     noSeasonBody: "Den aktuella fasta säsongen kunde inte läsas in."
   },
 
+  activeChallenges: {
+    label: "Dina aktiva utmaningar",
+    heading: "Matcher att rapportera",
+    acceptedOn: "Accepterad {date}",
+    staleBadge: "Inte längre öppen",
+    enterResult: "Registrera resultat",
+    closeResult: "Stäng resultatinmatningen",
+    refreshLadder: "Uppdatera stegen",
+    viewerWon: "Jag vann",
+    opponentWon: "{opponent} vann",
+    savingResult: "Sparar resultat..."
+  },
+
   seasonJoin: {
     heading: "Gå med i aktuell säsong",
     joining: "Ansluter till den aktiva säsongen ...",
